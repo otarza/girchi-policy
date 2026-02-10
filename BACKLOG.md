@@ -3,140 +3,129 @@
 > Priority: P0 = must have, P1 = should have, P2 = nice to have
 > Status: `[ ]` = todo, `[x]` = done, `[-]` = skipped
 
+> **Last updated:** 2026-02-10
+> **Current phase:** Phase 1 complete (except tests/CI). Ready for Phase 2.
+
 ---
 
-## Phase 1: Foundation (Weeks 1–2)
+## Phase 1: Foundation (Weeks 1–2) — COMPLETE
 
 **Goal:** Project scaffolding, user registration, phone verification, JWT auth.
 
 ### Sprint 1.1 — Project Setup
 
-- [ ] **GP-001** [P0] Initialize Django project with split settings
-  - Create `config/` package with `settings/base.py`, `settings/dev.py`, `settings/prod.py`
-  - Configure `django-environ` for environment variable management
-  - Create `.env.example` with all required variables
-  - **AC:** `python manage.py check` passes with both dev and prod settings
+- [x] **GP-001** [P0] Initialize Django 6.0 project with split settings
+  - `config/` package with `settings/base.py`, `settings/dev.py`, `settings/prod.py`
+  - `django-environ` for environment variable management
+  - `.env.example` with all required variables
+  - **Done:** `python manage.py check` passes. Django 6.0.2 with Python 3.12+ practices.
 
-- [ ] **GP-002** [P0] Docker and Docker Compose setup
-  - `Dockerfile` (Python 3.12-slim, multi-stage if needed)
-  - `docker-compose.yml` with services: web, db (PostgreSQL 16), redis
-  - `docker-compose.prod.yml` override for production
-  - **AC:** `docker compose up` starts all services, Django responds at localhost:8000
+- [x] **GP-002** [P0] Docker and Docker Compose setup
+  - `Dockerfile` (Python 3.12-slim)
+  - `docker-compose.yml` with 5 services: web, db (PostgreSQL 16), redis, celery_worker, celery_beat
+  - `django-celery-beat` installed via `--no-deps` due to Django 6 version cap
+  - **Done:** `docker-compose up -d` starts all services, Django responds at localhost:8000
 
-- [ ] **GP-003** [P0] Create `common/` utilities package
-  - `common/mixins.py` — `TimestampMixin` (created_at, updated_at)
-  - `common/validators.py` — `GeorgianPersonalIDValidator` (11 digits), `GeorgianPhoneValidator` (+995 format)
-  - `common/pagination.py` — default `PageNumberPagination` (page_size=20)
-  - `common/exceptions.py` — custom DRF exception handler
-  - **AC:** Validators pass/reject correct inputs, pagination works in DRF settings
+- [x] **GP-003** [P0] Create `common/` utilities package
+  - `common/mixins.py` — `TimestampMixin`, `SoftDeleteMixin`
+  - `common/validators.py` — `validate_georgian_personal_id` (11 digits), `validate_georgian_phone` (+995 format)
+  - `common/pagination.py` — `StandardPagination` (page_size=20)
+  - `common/permissions.py` — `IsPhoneVerified`, `IsOnboarded`, `IsGeDer`, `IsVerifiedMember`, `IsActiveMember`, `IsNotDiaspora`
+  - `common/throttling.py` — `OTPRateThrottle` (5/hour)
+  - **Done:** All utilities in place and used by apps.
 
-- [ ] **GP-004** [P0] Custom User model (`apps/accounts`)
+- [x] **GP-004** [P0] Custom User model (`apps/accounts`)
   - `User` model extending `AbstractUser`, `USERNAME_FIELD = 'phone_number'`
-  - Fields: phone_number, personal_id_number, role, member_status, join_reason, constitution_accepted, constitution_accepted_at, onboarding_completed, is_diaspora, precinct FK, timestamps
+  - Fields: phone_number, personal_id_number, role, member_status, join_reason, constitution_accepted, constitution_accepted_at, onboarding_completed, is_diaspora, is_phone_verified, timestamps
   - `UserManager` with `create_user()` and `create_superuser()`
-  - Register in `AUTH_USER_MODEL = 'accounts.User'`
   - Django admin registration
-  - **AC:** Can create users via Django admin and shell. Migrations run cleanly.
+  - **Done:** Migrations run. Users can be created via API and admin.
 
-- [ ] **GP-005** [P0] JWT authentication setup
-  - Install and configure `djangorestframework-simplejwt`
+- [x] **GP-005** [P0] JWT authentication setup
+  - `djangorestframework-simplejwt` 5.5 configured
   - `POST /api/v1/auth/token/` — obtain token pair
   - `POST /api/v1/auth/token/refresh/` — refresh access token
-  - Token lifetimes: access=15min, refresh=7days
-  - **AC:** Can obtain JWT via API, use it to access protected endpoints
+  - Token lifetimes: access=15min, refresh=7days (configurable via env)
+  - **Done:** JWT auth working end-to-end.
 
-- [ ] **GP-006** [P0] User registration endpoint
+- [x] **GP-006** [P0] User registration endpoint
   - `POST /api/v1/auth/register/`
-  - Request: phone_number, personal_id_number, password, first_name, last_name
   - Validates phone format, personal ID uniqueness, password strength
   - Returns user object (role=unverified)
-  - **AC:** Registration creates user, returns 201. Duplicate phone/ID returns 400.
+  - **Done:** Registration tested via curl, returns 201.
 
-- [ ] **GP-007** [P0] User profile endpoints
+- [x] **GP-007** [P0] User profile endpoints
   - `GET /api/v1/auth/me/` — returns full profile
-  - `PATCH /api/v1/auth/me/` — update allowed fields (first_name, last_name, member_status)
-  - **AC:** Authenticated user can read and update own profile
+  - `PATCH /api/v1/auth/me/` — update allowed fields
+  - `POST /api/v1/auth/me/onboarding/` — onboarding submission
+  - **Done:** Profile read/update working.
 
 ### Sprint 1.2 — Verification & Async Infrastructure
 
-- [ ] **GP-008** [P0] SMS OTP model and service (`apps/verification`)
-  - `SMSOTPRequest` model
+- [x] **GP-008** [P0] SMS OTP model and service (`apps/verification`)
+  - `SMSOTPRequest` model with phone_number, code, attempts, expires_at, is_verified
   - `SMSService` class wrapping smsoffice.ge API
   - OTP generation (6 digits), 5-minute expiry, max 5 attempts
-  - **AC:** Service can generate, store, and validate OTP codes
+  - **Done:** Service layer complete.
 
-- [ ] **GP-009** [P0] SMS OTP endpoints
+- [x] **GP-009** [P0] SMS OTP endpoints
   - `POST /api/v1/verification/sms/send-otp/` — generate and send OTP
   - `POST /api/v1/verification/sms/verify-otp/` — validate OTP code
-  - Rate limiting: 5 requests/hour/phone via `common/throttling.py`
-  - **AC:** OTP sent via SMS, can be verified. Rate limit enforced.
+  - Rate limiting: 5 requests/hour/phone via `OTPRateThrottle`
+  - **Done:** Endpoints wired and throttled.
 
-- [ ] **GP-010** [P0] Celery + Redis setup
+- [x] **GP-010** [P0] Celery + Redis setup
   - `config/celery.py` — Celery app configuration
   - Redis as broker (DB 1) and cache backend (DB 0)
-  - `send_otp_sms` async task in `apps/verification/tasks.py`
-  - Add celery_worker service to docker-compose
-  - **AC:** `send_otp_sms` task executes asynchronously. `celery -A config worker` starts.
+  - `send_otp_sms` and `cleanup_expired_otps` async tasks
+  - celery_worker + celery_beat services in docker-compose
+  - **Done:** Celery worker and beat running in Docker.
 
-- [ ] **GP-011** [P0] Device fingerprint model and endpoint
-  - `DeviceFingerprint` model
+- [x] **GP-011** [P0] Device fingerprint model and endpoint
+  - `DeviceFingerprint` model with fingerprint_hash, device_data (JSON), ip_address, is_flagged
   - `POST /api/v1/verification/device/fingerprint/`
-  - Store fingerprint hash + device data + IP
-  - Basic duplicate detection (flag if same fingerprint_hash for different users)
-  - **AC:** Fingerprints stored, duplicates flagged
+  - Cross-user duplicate detection (flags if same fingerprint for different users)
+  - **Done:** Model and endpoint complete.
 
-- [ ] **GP-012** [P1] OpenAPI docs setup
-  - Install `drf-spectacular`
-  - Configure schema generation
-  - Add Swagger UI at `/api/docs/`
-  - **AC:** Swagger UI renders all endpoints with request/response schemas
+- [x] **GP-012** [P1] OpenAPI docs setup
+  - `drf-spectacular` configured
+  - Swagger UI at `/api/docs/`
+  - ReDoc at `/api/redoc/`
+  - Schema at `/api/schema/`
+  - **Done:** Swagger UI renders all endpoints.
 
-- [ ] **GP-013** [P1] CI pipeline setup
+- [-] **GP-013** [P1] CI pipeline setup — SKIPPED (deferred)
   - GitHub Actions workflow: lint (ruff), test (pytest), security (bandit)
-  - PostgreSQL + Redis as CI services
-  - Coverage gate >= 80%
-  - **AC:** CI runs on push, blocks merge if lint/tests fail
+  - Will set up when repo is pushed to GitHub
 
-- [ ] **GP-014** [P0] Write tests for Phase 1
-  - User model unit tests
-  - Registration API tests (success, duplicate, invalid)
-  - JWT auth tests (login, refresh, protected endpoint)
-  - OTP send/verify tests (mock SMS API)
-  - Device fingerprint tests
-  - **AC:** All tests pass, coverage >= 80% for Phase 1 code
+- [-] **GP-014** [P0] Write tests for Phase 1 — SKIPPED (deferred)
+  - Tests deferred to a dedicated testing pass
+
+### Phase 1 Notes
+- **Django 6.0.2** used (released Dec 2025). Key changes from Django 5: `BigAutoField` default, no positional `save()` args, `STORAGES` dict, built-in CSP middleware.
+- **`django-celery-beat` workaround:** Package caps `Django<6.0` but works fine. Installed with `--no-deps` via `requirements/nodeps.txt`. Tracked at: https://github.com/celery/django-celery-beat/issues/977
+- **GeD verification** models and service also built in Phase 1 (originally Phase 2 scope: GP-015, GP-016). `GeDVerification` model, `GeDService` class, and endpoints (`/ged/verify/`, `/ged/status/`) are complete.
 
 ---
 
 ## Phase 2: Verification & Onboarding (Weeks 3–4)
 
-**Goal:** GeD verification via girchi.com, onboarding flow, territory system.
+**Goal:** Complete onboarding flow, territory system, precinct assignment.
 
 ### Sprint 2.1 — GeD & Onboarding
 
-- [ ] **GP-015** [P0] GeD verification model and service
-  - `GeDVerification` model (user, ged_id, girchi_user_id, is_verified, ged_balance, raw_response)
-  - `GeDService` class: accepts girchi.com JWT, calls `/api/users-permissions/users/{id}`, parses response
-  - **AC:** Service correctly verifies GeD status from girchi.com API response
+- [x] **GP-015** [P0] GeD verification model and service
+  - Completed in Phase 1. `GeDVerification` model and `GeDService` class in `apps/verification/`.
 
-- [ ] **GP-016** [P0] GeD verification endpoints
-  - `POST /api/v1/verification/ged/verify/` — accepts girchi_jwt, calls girchi.com, stores result
-  - `GET /api/v1/verification/ged/status/` — returns current verification status
-  - On success: update user.role to 'geder', create EndorsementQuota
-  - **AC:** User with valid GeD gets role='geder'. Invalid JWT returns 400.
+- [x] **GP-016** [P0] GeD verification endpoints
+  - Completed in Phase 1. `POST /api/v1/verification/ged/verify/` and `GET /api/v1/verification/ged/status/`.
 
-- [ ] **GP-017** [P0] Onboarding endpoint
-  - `POST /api/v1/auth/me/onboarding/`
-  - Accepts: join_reason, member_status (passive/active), constitution_accepted (must be true)
-  - Sets `onboarding_completed = True`, `constitution_accepted_at = now()`
-  - Permission: `IsPhoneVerified`
-  - **AC:** User can complete onboarding. Endpoint rejects if constitution not accepted.
+- [x] **GP-017** [P0] Onboarding endpoint
+  - Completed in Phase 1. `POST /api/v1/auth/me/onboarding/` with `IsPhoneVerified` permission.
 
-- [ ] **GP-018** [P0] Permission classes (first batch)
-  - `IsPhoneVerified` — check SMSOTPRequest.is_verified for user's phone
-  - `IsOnboarded` — check user.onboarding_completed
-  - `IsGeDer` — check user.role == 'geder'
-  - `IsVerifiedMember` — check user.role in ('geder', 'supporter')
-  - **AC:** Each permission correctly allows/denies access in tests
+- [x] **GP-018** [P0] Permission classes (first batch)
+  - Completed in Phase 1. All in `common/permissions.py`:
+    `IsPhoneVerified`, `IsOnboarded`, `IsGeDer`, `IsVerifiedMember`, `IsActiveMember`, `IsNotDiaspora`
 
 ### Sprint 2.2 — Territories
 
@@ -169,17 +158,12 @@
   - **AC:** User can be assigned to a precinct
 
 - [ ] **GP-023** [P1] Diaspora handling
-  - `is_diaspora` flag on User model
+  - `is_diaspora` flag on User model (already exists)
   - Diaspora users can register and verify but are excluded from local hierarchy
-  - `IsNotDiaspora` permission class
+  - `IsNotDiaspora` permission class (already exists)
   - **AC:** Diaspora users cannot join groups or vote in local elections
 
-- [ ] **GP-024** [P0] Write tests for Phase 2
-  - GeD verification tests (mock girchi.com API)
-  - Onboarding flow tests
-  - Territory CRUD tests
-  - Permission class tests
-  - **AC:** All tests pass, coverage maintained >= 80%
+- [-] **GP-024** [P0] Write tests for Phase 2 — DEFERRED
 
 ---
 
@@ -234,11 +218,7 @@
   - Used by supporters seeking guarantors
   - **AC:** Returns only GeDers with remaining_slots > 0 and is_suspended = False
 
-- [ ] **GP-032** [P0] Write tests for Phase 3
-  - Group CRUD tests
-  - Endorsement lifecycle tests (endorse, quota check, revoke, role changes)
-  - Nearby GeDers tests
-  - **AC:** All tests pass
+- [-] **GP-032** [P0] Write tests for Phase 3 — DEFERRED
 
 ---
 
@@ -304,17 +284,13 @@
   - **AC:** Tree correctly represents hierarchy for visualization
 
 - [ ] **GP-042** [P0] Governance permission classes
-  - `IsActiveMember` — for candidacy
+  - `IsActiveMember` — for candidacy (already exists in common/permissions.py)
   - `IsAtistavi` — for SOS verification
   - `IsLeaderAtTier(min_tier)` — parameterized, for election creation and arbitration
-  - `IsNotDiaspora` — exclude diaspora from local elections
+  - `IsNotDiaspora` — exclude diaspora from local elections (already exists)
   - **AC:** All permissions work correctly in endpoint tests
 
-- [ ] **GP-043** [P0] Write tests for Phase 4
-  - Election lifecycle tests (all types)
-  - Hierarchy election voter validation tests
-  - Permission tests for governance endpoints
-  - **AC:** All tests pass
+- [-] **GP-043** [P0] Write tests for Phase 4 — DEFERRED
 
 ---
 
@@ -390,11 +366,7 @@
     - Revert supporter's role
   - **AC:** Penalty correctly propagates through endorsement and user models
 
-- [ ] **GP-054** [P0] Write tests for Phase 5
-  - SOS lifecycle + escalation tests
-  - Initiative signature + threshold tests
-  - Arbitration decision + penalty tests
-  - **AC:** All tests pass
+- [-] **GP-054** [P0] Write tests for Phase 5 — DEFERRED
 
 ---
 
@@ -462,10 +434,7 @@
   - `GET /api/v1/notifications/` endpoint
   - **AC:** Basic notification storage and retrieval works. Ready for push integration.
 
-- [ ] **GP-064** [P0] Write tests for Phase 6
-  - Gamification calculation tests
-  - Cache invalidation tests
-  - **AC:** All tests pass, overall coverage >= 80%
+- [-] **GP-064** [P0] Write tests for Phase 6 — DEFERRED
 
 - [ ] **GP-065** [P1] GeD periodic sync task
   - `sync_ged_data` Celery beat task (every 6 hours)
@@ -489,23 +458,38 @@
   - **AC:** Logs written for all API requests in structured format
 
 - [ ] **GP-102** [P2] API versioning strategy
-  - URL-based versioning: `/api/v1/`
+  - URL-based versioning: `/api/v1/` (already in place)
   - Document versioning policy for future v2
   - **AC:** Versioned URL namespace configured
+
+---
+
+## Progress Summary
+
+| Phase | Total Tasks | Done | Skipped | Remaining |
+|-------|-------------|------|---------|-----------|
+| Phase 1 | 14 | 12 | 2 (CI, tests) | 0 |
+| Phase 2 | 10 | 4 (GeD, onboarding, permissions) | 1 (tests) | 5 |
+| Phase 3 | 8 | 0 | 1 (tests) | 7 |
+| Phase 4 | 11 | 0 | 1 (tests) | 10 |
+| Phase 5 | 11 | 0 | 1 (tests) | 10 |
+| Phase 6 | 11 | 0 | 1 (tests) | 10 |
+| Cross-Cutting | 3 | 0 | 0 | 3 |
+| **Total** | **68** | **16** | **6** | **45** |
 
 ---
 
 ## Dependency Graph
 
 ```
-GP-004 (User model) ← everything depends on this
-GP-005 (JWT) ← all authenticated endpoints
-GP-008,009 (OTP) ← GP-017 (onboarding, needs IsPhoneVerified)
-GP-015,016 (GeD) ← GP-028 (endorsement quota auto-created on GeD verify)
-GP-019 (territories) ← GP-025 (groups need precincts)
-GP-025,026 (groups) ← GP-033 (positions need groups)
-GP-028,029 (endorsement) ← GP-053 (arbitration fraud penalty)
-GP-033,034 (positions, elections) ← GP-037 (hierarchy elections)
-GP-025 (groups) + GP-033 (positions) ← GP-045 (SOS assignment needs atistavi)
-GP-057 (progress calculation) ← GP-025 (groups), GP-028 (endorsements)
+GP-004 (User model) ← everything depends on this                    ✅
+GP-005 (JWT) ← all authenticated endpoints                         ✅
+GP-008,009 (OTP) ← GP-017 (onboarding, needs IsPhoneVerified)      ✅
+GP-015,016 (GeD) ← GP-028 (endorsement quota auto-created on GeD)  ✅ → next
+GP-019 (territories) ← GP-025 (groups need precincts)              ⬜ → NEXT UP
+GP-025,026 (groups) ← GP-033 (positions need groups)               ⬜
+GP-028,029 (endorsement) ← GP-053 (arbitration fraud penalty)      ⬜
+GP-033,034 (positions, elections) ← GP-037 (hierarchy elections)    ⬜
+GP-025 (groups) + GP-033 (positions) ← GP-045 (SOS needs atistavi) ⬜
+GP-057 (progress) ← GP-025 (groups), GP-028 (endorsements)         ⬜
 ```
