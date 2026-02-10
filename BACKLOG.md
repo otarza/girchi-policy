@@ -4,7 +4,7 @@
 > Status: `[ ]` = todo, `[x]` = done, `[-]` = skipped
 
 > **Last updated:** 2026-02-10
-> **Current phase:** Phase 1 complete (except tests/CI). Ready for Phase 2.
+> **Current phase:** Phase 2 in progress. GP-019 (territories) done. Next: GP-020.
 
 ---
 
@@ -129,12 +129,11 @@
 
 ### Sprint 2.2 — Territories
 
-- [ ] **GP-019** [P0] Territory models
-  - `Region` (name, name_ka, code)
-  - `District` (FK Region, name, name_ka, cec_code)
-  - `Precinct` (FK District, name, name_ka, cec_code, lat, lng)
-  - Indexes on cec_code fields
-  - **AC:** Models created, migrations run, admin registered
+- [x] **GP-019** [P0] Territory models
+  - `Region` (name, name_ka, code), `District` (FK Region, name, name_ka, cec_code), `Precinct` (FK District, name, name_ka, cec_code, lat, lng)
+  - Indexes on cec_code fields, admin registered with filters/search
+  - Seed script at `scripts/seed_territories.py` (5 regions, 13 districts, 19 precincts)
+  - **Done:** Models created, migrations run, admin registered, dummy data seeded.
 
 - [ ] **GP-020** [P0] `import_cec_data` management command
   - `python manage.py import_cec_data <file_path>`
@@ -469,13 +468,13 @@
 | Phase | Total Tasks | Done | Skipped | Remaining |
 |-------|-------------|------|---------|-----------|
 | Phase 1 | 14 | 12 | 2 (CI, tests) | 0 |
-| Phase 2 | 10 | 4 (GeD, onboarding, permissions) | 1 (tests) | 5 |
+| Phase 2 | 10 | 5 (GeD, onboarding, permissions, territories) | 1 (tests) | 4 |
 | Phase 3 | 8 | 0 | 1 (tests) | 7 |
 | Phase 4 | 11 | 0 | 1 (tests) | 10 |
 | Phase 5 | 11 | 0 | 1 (tests) | 10 |
 | Phase 6 | 11 | 0 | 1 (tests) | 10 |
 | Cross-Cutting | 3 | 0 | 0 | 3 |
-| **Total** | **68** | **16** | **6** | **45** |
+| **Total** | **68** | **17** | **6** | **44** |
 
 ---
 
