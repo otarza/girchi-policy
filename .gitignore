@@ -2,6 +2,9 @@
 .DS_Store
 Thumbs.db
 
+# Postman collections (may contain API keys)
+*.postman_collection.json
+
 # IDE
 .vscode/
 .idea/
