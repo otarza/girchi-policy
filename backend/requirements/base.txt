@@ -1,0 +1,16 @@
+Django>=6.0,<6.1
+djangorestframework>=3.16,<3.17
+djangorestframework-simplejwt>=5.5,<5.6
+django-filter>=25.2
+django-cors-headers>=4.9
+django-redis>=6.0
+django-environ>=0.12
+# NOTE: django-celery-beat 2.8.1 caps Django<6.0 but works fine.
+# Excluded from this file — installed separately with --no-deps.
+# See Dockerfile and requirements/nodeps.txt
+# Track: https://github.com/celery/django-celery-beat/issues/977
+celery>=5.6
+psycopg[binary]>=3.3
+gunicorn>=25.0
+requests>=2.32
+drf-spectacular>=0.29

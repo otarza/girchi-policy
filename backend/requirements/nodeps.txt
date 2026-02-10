@@ -1,0 +1,8 @@
+# Packages installed with --no-deps due to overly strict version caps.
+# These are verified to work fine with our stack.
+# django-celery-beat deps (minus Django itself) must be listed here.
+# Already in base.txt: celery, tzdata
+django-timezone-field>=7.0
+python-crontab>=3.2
+cron-descriptor>=1.4
+django-celery-beat>=2.8
