@@ -61,6 +61,15 @@ class User(AbstractUser):
     # Diaspora
     is_diaspora = models.BooleanField(default=False)
 
+    # Territory assignment
+    precinct = models.ForeignKey(
+        "territories.Precinct",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users",
+    )
+
     # Phone verification
     is_phone_verified = models.BooleanField(default=False)
 
@@ -76,6 +85,7 @@ class User(AbstractUser):
     class Meta:
         indexes = [
             models.Index(fields=["personal_id_number"]),
+            models.Index(fields=["precinct", "role"]),
         ]
 
     def __str__(self):
