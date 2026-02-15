@@ -6,8 +6,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from common.permissions import IsOnboarded, IsGeDer, IsVerifiedMember, IsNotDiaspora
-from .models import GroupOfTen, Membership
+from .models import Endorsement, EndorsementQuota, GroupOfTen, Membership
 from .serializers import (
+    EndorsementSerializer,
+    EndorsementQuotaSerializer,
     GroupOfTenSerializer,
     GroupOfTenListSerializer,
     MembershipSerializer,
@@ -156,3 +158,168 @@ class GroupOfTenViewSet(viewsets.ModelViewSet):
         group.update_full_status()
 
         return Response({"detail": "You have left the group."}, status=status.HTTP_200_OK)
+
+
+class EndorsementViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Endorsement operations.
+
+    Permissions:
+    - Create (endorse): IsAuthenticated + IsOnboarded + IsGeDer
+    - List: IsAuthenticated + IsOnboarded
+    - Delete (revoke): IsAuthenticated + IsOnboarded + IsGeDer (must be guarantor)
+
+    Business Logic (GP-030):
+    - On create: Check quota, check not suspended, promote supporter role to 'supporter'
+    - On delete: Revert supporter role to 'unverified', remove from group, decrement used_slots
+    """
+
+    permission_classes = [IsAuthenticated, IsOnboarded]
+    serializer_class = EndorsementSerializer
+
+    def get_queryset(self):
+        """
+        Return endorsements where user is guarantor or supporter.
+        """
+        user = self.request.user
+        return Endorsement.objects.filter(
+            Q(guarantor=user) | Q(supporter=user)
+        ).select_related("guarantor", "supporter")
+
+    def get_permissions(self):
+        """Override permissions for create action."""
+        if self.action in ["create", "destroy"]:
+            return [IsAuthenticated(), IsOnboarded(), IsGeDer()]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        """
+        Create endorsement with business logic (GP-030).
+
+        Business rules:
+        - Check quota exists and has remaining slots
+        - Check guarantor is not suspended
+        - Promote supporter role from 'unverified' to 'supporter'
+        - Increment used_slots
+        """
+        guarantor = self.request.user
+        supporter = serializer.validated_data["supporter"]
+
+        # Validate guarantor has quota
+        try:
+            quota = EndorsementQuota.objects.get(geder=guarantor)
+        except EndorsementQuota.DoesNotExist:
+            raise serializers.ValidationError(
+                {"detail": "Endorsement quota not found. Please contact support."}
+            )
+
+        # Check if suspended
+        if quota.is_suspended:
+            raise serializers.ValidationError(
+                {
+                    "detail": f"Your endorsement rights are suspended. Reason: {quota.suspended_reason}"
+                }
+            )
+
+        # Check remaining slots
+        if quota.remaining_slots <= 0:
+            raise serializers.ValidationError(
+                {
+                    "detail": f"You have reached your endorsement limit ({quota.max_slots})."
+                }
+            )
+
+        # Check if supporter already endorsed
+        if hasattr(supporter, "endorsement"):
+            existing = supporter.endorsement
+            if existing.status == Endorsement.Status.ACTIVE:
+                raise serializers.ValidationError(
+                    {"supporter_id": "This user is already endorsed."}
+                )
+
+        # Check supporter is unverified
+        if supporter.role != "unverified":
+            raise serializers.ValidationError(
+                {
+                    "supporter_id": f"Can only endorse unverified users. This user's role is '{supporter.role}'."
+                }
+            )
+
+        # Create endorsement
+        endorsement = serializer.save(guarantor=guarantor, status=Endorsement.Status.ACTIVE)
+
+        # Promote supporter role to 'supporter'
+        supporter.role = "supporter"
+        supporter.save(update_fields=["role"])
+
+        # Increment used_slots
+        quota.used_slots += 1
+        quota.save(update_fields=["used_slots"])
+
+    def perform_destroy(self, instance):
+        """
+        Revoke endorsement with business logic (GP-030).
+
+        Business rules:
+        - Only guarantor can revoke
+        - Revert supporter role to 'unverified'
+        - Remove supporter from group if active member
+        - Decrement used_slots
+        - Mark endorsement as revoked (soft delete)
+        """
+        guarantor = self.request.user
+
+        # Verify user is the guarantor
+        if instance.guarantor != guarantor:
+            raise serializers.ValidationError(
+                {"detail": "You can only revoke your own endorsements."}
+            )
+
+        # Revert supporter role to unverified
+        supporter = instance.supporter
+        supporter.role = "unverified"
+        supporter.save(update_fields=["role"])
+
+        # Remove from group if active member
+        if hasattr(supporter, "membership") and supporter.membership.is_active:
+            membership = supporter.membership
+            membership.is_active = False
+            membership.left_at = timezone.now()
+            membership.save(update_fields=["is_active", "left_at"])
+
+            # Update group full status
+            membership.group.update_full_status()
+
+        # Decrement used_slots
+        quota = EndorsementQuota.objects.get(geder=guarantor)
+        quota.used_slots = max(0, quota.used_slots - 1)
+        quota.save(update_fields=["used_slots"])
+
+        # Mark as revoked (soft delete - don't actually delete)
+        instance.status = Endorsement.Status.REVOKED
+        instance.revoked_at = timezone.now()
+        instance.save(update_fields=["status", "revoked_at"])
+
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to use soft delete."""
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {"detail": "Endorsement revoked successfully."}, status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated, IsGeDer])
+    def quota(self, request):
+        """
+        Check authenticated GeDer's endorsement quota.
+        GET /api/v1/communities/endorsements/quota/
+        """
+        try:
+            quota = EndorsementQuota.objects.get(geder=request.user)
+        except EndorsementQuota.DoesNotExist:
+            return Response(
+                {"detail": "Endorsement quota not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = EndorsementQuotaSerializer(quota)
+        return Response(serializer.data)

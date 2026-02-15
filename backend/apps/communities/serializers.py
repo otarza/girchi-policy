@@ -1,8 +1,16 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.territories.models import Precinct
 from apps.territories.serializers import PrecinctSerializer
-from .models import GroupOfTen, Membership
+from .models import Endorsement, EndorsementQuota, GroupOfTen, Membership
+
+User = get_user_model()
+
+
+# ============================================================================
+# MEMBERSHIP SERIALIZERS
+# ============================================================================
 
 
 class MembershipSerializer(serializers.ModelSerializer):
@@ -35,6 +43,11 @@ class MembershipSerializer(serializers.ModelSerializer):
             "full_name": obj.user.get_full_name(),
             "role": obj.user.role,
         }
+
+
+# ============================================================================
+# GROUP SERIALIZERS
+# ============================================================================
 
 
 class GroupOfTenListSerializer(serializers.ModelSerializer):
@@ -87,3 +100,73 @@ class GroupOfTenSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["is_full", "created_at"]
+
+
+# ============================================================================
+# ENDORSEMENT SERIALIZERS
+# ============================================================================
+
+
+class EndorsementSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Endorsement with user details.
+    """
+
+    guarantor = serializers.SerializerMethodField()
+    supporter = serializers.SerializerMethodField()
+    supporter_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source="supporter",
+        write_only=True,
+    )
+
+    class Meta:
+        model = Endorsement
+        fields = [
+            "id",
+            "guarantor",
+            "supporter",
+            "supporter_id",
+            "status",
+            "created_at",
+            "revoked_at",
+            "revoke_reason",
+        ]
+        read_only_fields = ["guarantor", "status", "created_at", "revoked_at"]
+
+    def get_guarantor(self, obj):
+        """Return guarantor user details."""
+        return {
+            "id": obj.guarantor.id,
+            "phone_number": obj.guarantor.phone_number,
+            "full_name": obj.guarantor.get_full_name(),
+        }
+
+    def get_supporter(self, obj):
+        """Return supporter user details."""
+        return {
+            "id": obj.supporter.id,
+            "phone_number": obj.supporter.phone_number,
+            "full_name": obj.supporter.get_full_name(),
+            "role": obj.supporter.role,
+        }
+
+
+class EndorsementQuotaSerializer(serializers.ModelSerializer):
+    """
+    Serializer for EndorsementQuota.
+    """
+
+    remaining_slots = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = EndorsementQuota
+        fields = [
+            "max_slots",
+            "used_slots",
+            "remaining_slots",
+            "is_suspended",
+            "suspended_at",
+            "suspended_reason",
+        ]
+        read_only_fields = ["used_slots", "suspended_at"]

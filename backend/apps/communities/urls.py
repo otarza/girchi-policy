@@ -7,5 +7,6 @@ app_name = "communities"
 
 router = DefaultRouter()
 router.register(r"groups", views.GroupOfTenViewSet, basename="group")
+router.register(r"endorsements", views.EndorsementViewSet, basename="endorsement")
 
 urlpatterns = router.urls
