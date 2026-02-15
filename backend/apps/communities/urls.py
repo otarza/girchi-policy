@@ -9,4 +9,6 @@ router = DefaultRouter()
 router.register(r"groups", views.GroupOfTenViewSet, basename="group")
 router.register(r"endorsements", views.EndorsementViewSet, basename="endorsement")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("nearby-geders/", views.NearbyGeDersView.as_view(), name="nearby-geders"),
+] + router.urls

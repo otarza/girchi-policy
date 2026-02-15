@@ -170,3 +170,40 @@ class EndorsementQuotaSerializer(serializers.ModelSerializer):
             "suspended_reason",
         ]
         read_only_fields = ["used_slots", "suspended_at"]
+
+
+# ============================================================================
+# NEARBY GEDERS SERIALIZER
+# ============================================================================
+
+
+class NearbyGeDerSerializer(serializers.ModelSerializer):
+    """
+    Minimal serializer for GeDers with available endorsement slots.
+    Used by supporters seeking guarantors in their precinct.
+    """
+
+    full_name = serializers.SerializerMethodField()
+    available_slots = serializers.SerializerMethodField()
+    precinct = PrecinctSerializer(read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "phone_number",
+            "full_name",
+            "available_slots",
+            "precinct",
+        ]
+        read_only_fields = fields
+
+    def get_full_name(self, obj):
+        """Return user's full name."""
+        return obj.get_full_name()
+
+    def get_available_slots(self, obj):
+        """Return remaining endorsement slots."""
+        if hasattr(obj, "endorsement_quota"):
+            return obj.endorsement_quota.remaining_slots
+        return 0

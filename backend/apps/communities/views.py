@@ -1,6 +1,7 @@
+from django.db import models
 from django.db.models import Count, Q
 from django.utils import timezone
-from rest_framework import viewsets, status, serializers
+from rest_framework import viewsets, status, serializers, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -13,6 +14,7 @@ from .serializers import (
     GroupOfTenSerializer,
     GroupOfTenListSerializer,
     MembershipSerializer,
+    NearbyGeDerSerializer,
 )
 
 
@@ -323,3 +325,70 @@ class EndorsementViewSet(viewsets.ModelViewSet):
 
         serializer = EndorsementQuotaSerializer(quota)
         return Response(serializer.data)
+
+
+class NearbyGeDersView(generics.ListAPIView):
+    """
+    List GeDers in a specific precinct who have available endorsement slots.
+
+    Query parameters:
+    - precinct_id (required): Filter by precinct ID
+
+    Permissions: IsAuthenticated + IsOnboarded
+
+    Returns GeDers with role='geder', endorsement quota exists,
+    is_suspended=False, and remaining_slots > 0.
+
+    Used by supporters seeking guarantors for endorsement.
+    """
+
+    serializer_class = NearbyGeDerSerializer
+    permission_classes = [IsAuthenticated, IsOnboarded]
+
+    def get_queryset(self):
+        """
+        Filter GeDers by precinct with available endorsement slots.
+        Optimized with select_related to avoid N+1 queries.
+        """
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+
+        precinct_id = self.request.query_params.get("precinct_id")
+
+        if not precinct_id:
+            return User.objects.none()
+
+        # Build optimized query
+        return (
+            User.objects.filter(
+                role=User.Role.GEDER,
+                precinct_id=precinct_id,
+                endorsement_quota__isnull=False,
+            )
+            .select_related(
+                "endorsement_quota",
+                "precinct__district__region",
+            )
+            .exclude(
+                endorsement_quota__is_suspended=True,
+            )
+            .exclude(
+                endorsement_quota__used_slots__gte=models.F("endorsement_quota__max_slots"),
+            )
+            .order_by("id")
+        )
+
+    def list(self, request, *args, **kwargs):
+        """
+        Override list to add validation error for missing precinct_id.
+        """
+        precinct_id = request.query_params.get("precinct_id")
+
+        if not precinct_id:
+            return Response(
+                {"detail": "Query parameter 'precinct_id' is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return super().list(request, *args, **kwargs)
