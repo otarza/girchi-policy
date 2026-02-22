@@ -5,4 +5,5 @@ urlpatterns = [
     path("verification/", include("apps.verification.urls")),
     path("territories/", include("apps.territories.urls")),
     path("communities/", include("apps.communities.urls")),
+    path("governance/", include("apps.governance.urls")),
 ]
