@@ -4,7 +4,7 @@
 > Status: `[ ]` = todo, `[x]` = done, `[-]` = skipped
 
 > **Last updated:** 2026-02-22
-> **Current phase:** Phase 4 in progress. GP-033 through GP-041 complete (governance system fully implemented). Next: GP-042 (permission classes). Phase 4: 9/11 complete (82%).
+> **Current phase:** Phase 4 in progress. GP-033 through GP-042 complete (governance system fully implemented). Next: GP-043 (tests). Phase 4: 10/11 complete (91%).
 
 ---
 
@@ -282,12 +282,13 @@
   - Returns nested tree: 1000-leader → 100-leaders → 50-leaders → atistavis
   - **AC:** Tree correctly represents hierarchy for visualization
 
-- [ ] **GP-042** [P0] Governance permission classes
+- [x] **GP-042** [P0] Governance permission classes
   - `IsActiveMember` — for candidacy (already exists in common/permissions.py)
   - `IsAtistavi` — for SOS verification
   - `IsLeaderAtTier(min_tier)` — parameterized, for election creation and arbitration
   - `IsNotDiaspora` — exclude diaspora from local elections (already exists)
   - **AC:** All permissions work correctly in endpoint tests
+  - **Done:** Added IsAtistavi, IsLeaderAtTier with min_tier parameter, and convenience aliases (IsFiftyLeader, IsHundredLeader, IsCouncilMember) to common/permissions.py. Uses tier__gte for hierarchy checks.
 
 - [-] **GP-043** [P0] Write tests for Phase 4 — DEFERRED
 
