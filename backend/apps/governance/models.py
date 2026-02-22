@@ -17,14 +17,20 @@ class LeaderPosition(models.Model):
     """
     Represents a leadership position in the governance hierarchy.
 
-    Hierarchy structure:
+    Hierarchy structure and ratios:
     - Tier 10 (Atistavi): Linked to a GroupOfTen, elected by group members
-    - Tier 50: Elected by 5 atistavis from among themselves
-    - Tier 100: Elected by 2 fifty-leaders from among themselves
-    - Tier 1000: Elected by 10 hundred-leaders; become council members
+      → 5 atistavis form the base for electing a fifty-leader
+    - Tier 50 (Fifty-leader): Elected by atistavis in the precinct (5:1 ratio)
+      → 2 fifty-leaders form the base for electing a hundred-leader
+    - Tier 100 (Hundred-leader): Elected by fifty-leaders in the district (2:1 ratio)
+      → 10 hundred-leaders form the base for electing a thousand-leader
+    - Tier 1000 (Thousand-leader/Council): Elected by hundred-leaders party-wide (10:1 ratio)
 
-    Each position can be vacant (holder=None) or held by a user.
-    Positions link to their parent in the hierarchy via the parent FK.
+    Voting rules:
+    - ALL leaders at tier N can vote for positions at tier N+1 (not just the minimum ratio)
+    - Candidates must be from among the eligible voters (leaders at tier N)
+    - Each position can be vacant (holder=None) or held by a user
+    - Positions link to their parent in the hierarchy via the parent FK
     """
 
     tier = models.IntegerField(
@@ -200,6 +206,109 @@ class LeaderPosition(models.Model):
         # For hierarchy elections (tier 50+), candidates are the eligible voters
         return self.get_eligible_voters()
 
+    @classmethod
+    def should_create_fifty_position(cls, precinct):
+        """
+        Check if a precinct has enough atistavis (5+) to create a fifty-leader position.
+
+        Returns:
+            tuple: (should_create: bool, count: int)
+        """
+        atistavi_count = cls.objects.filter(
+            tier=GovernanceTier.ATISTAVI,
+            precinct=precinct,
+            is_active=True,
+            holder__isnull=False,
+        ).count()
+        return atistavi_count >= 5, atistavi_count
+
+    @classmethod
+    def should_create_hundred_position(cls, district):
+        """
+        Check if a district has enough fifty-leaders (2+) to create a hundred-leader position.
+
+        Returns:
+            tuple: (should_create: bool, count: int)
+        """
+        fifty_count = cls.objects.filter(
+            tier=GovernanceTier.FIFTY,
+            district=district,
+            is_active=True,
+            holder__isnull=False,
+        ).count()
+        return fifty_count >= 2, fifty_count
+
+    @classmethod
+    def should_create_thousand_position(cls):
+        """
+        Check if there are enough hundred-leaders (10+) to create a thousand-leader position.
+
+        Returns:
+            tuple: (should_create: bool, count: int)
+        """
+        hundred_count = cls.objects.filter(
+            tier=GovernanceTier.HUNDRED,
+            is_active=True,
+            holder__isnull=False,
+        ).count()
+        return hundred_count >= 10, hundred_count
+
+    def get_parent_positions(self):
+        """
+        Get positions at the tier above that this position reports to.
+
+        Returns:
+            QuerySet: LeaderPosition queryset at tier above
+        """
+        if self.tier == GovernanceTier.ATISTAVI and self.precinct:
+            # Atistavis report to fifty-leaders in the same precinct
+            return LeaderPosition.objects.filter(
+                tier=GovernanceTier.FIFTY,
+                precinct=self.precinct,
+                is_active=True,
+            )
+        elif self.tier == GovernanceTier.FIFTY and self.district:
+            # Fifty-leaders report to hundred-leaders in the same district
+            return LeaderPosition.objects.filter(
+                tier=GovernanceTier.HUNDRED,
+                district=self.district,
+                is_active=True,
+            )
+        elif self.tier == GovernanceTier.HUNDRED:
+            # Hundred-leaders report to thousand-leaders (party-wide)
+            return LeaderPosition.objects.filter(
+                tier=GovernanceTier.THOUSAND, is_active=True
+            )
+        return LeaderPosition.objects.none()
+
+    def get_child_positions(self):
+        """
+        Get positions at the tier below that report to this position.
+
+        Returns:
+            QuerySet: LeaderPosition queryset at tier below
+        """
+        if self.tier == GovernanceTier.FIFTY and self.precinct:
+            # Fifty-leaders oversee atistavis in the same precinct
+            return LeaderPosition.objects.filter(
+                tier=GovernanceTier.ATISTAVI,
+                precinct=self.precinct,
+                is_active=True,
+            )
+        elif self.tier == GovernanceTier.HUNDRED and self.district:
+            # Hundred-leaders oversee fifty-leaders in the same district
+            return LeaderPosition.objects.filter(
+                tier=GovernanceTier.FIFTY,
+                district=self.district,
+                is_active=True,
+            )
+        elif self.tier == GovernanceTier.THOUSAND:
+            # Thousand-leaders oversee hundred-leaders (party-wide)
+            return LeaderPosition.objects.filter(
+                tier=GovernanceTier.HUNDRED, is_active=True
+            )
+        return LeaderPosition.objects.none()
+
 
 class ElectionType(models.TextChoices):
     """
@@ -322,6 +431,43 @@ class Election(models.Model):
             .first()
         )
         return winner
+
+    @property
+    def can_be_tallied(self):
+        """Check if election is ready for vote tallying."""
+        return self.status == ElectionStatus.COMPLETED and self.position is not None
+
+    def transition_to_voting(self):
+        """
+        Transition election from nomination to voting.
+        Validates that current time >= voting_start.
+        """
+        from django.utils import timezone
+
+        if self.status != ElectionStatus.NOMINATION:
+            raise ValueError("Can only transition to voting from nomination status")
+
+        if timezone.now() < self.voting_start:
+            raise ValueError("Cannot transition to voting before voting_start time")
+
+        self.status = ElectionStatus.VOTING
+        self.save(update_fields=["status"])
+
+    def transition_to_completed(self):
+        """
+        Transition election from voting to completed.
+        Validates that current time >= voting_end.
+        """
+        from django.utils import timezone
+
+        if self.status != ElectionStatus.VOTING:
+            raise ValueError("Can only transition to completed from voting status")
+
+        if timezone.now() < self.voting_end:
+            raise ValueError("Cannot transition to completed before voting_end time")
+
+        self.status = ElectionStatus.COMPLETED
+        self.save(update_fields=["status"])
 
 
 class Candidacy(models.Model):

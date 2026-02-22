@@ -3,8 +3,8 @@
 > Priority: P0 = must have, P1 = should have, P2 = nice to have
 > Status: `[ ]` = todo, `[x]` = done, `[-]` = skipped
 
-> **Last updated:** 2026-02-15
-> **Current phase:** Phase 3 complete (except GP-027 deferred). GP-031 (nearby GeDers) done. Next: Phase 2 remaining tasks (GP-020, GP-021, GP-023) or start Phase 4.
+> **Last updated:** 2026-02-22
+> **Current phase:** Phase 4 in progress. GP-033 through GP-037 complete (positions, elections, lifecycle, hierarchy logic). Next: GP-038 (council auto-assignment).
 
 ---
 
@@ -254,7 +254,7 @@
 
 ### Sprint 4.2 — Hierarchy Elections
 
-- [ ] **GP-037** [P0] Hierarchy election logic
+- [x] **GP-037** [P0] Hierarchy election logic
   - 50-leader election: voters = 5 atistavis, candidates from among them
   - 100-leader election: voters = 2 fifty-leaders, candidates from among them
   - 1000-leader election: voters = 10 hundred-leaders, candidates from among them
@@ -470,7 +470,7 @@
 | Phase 1 | 14 | 12 | 2 (CI, tests) | 0 |
 | Phase 2 | 10 | 6 (GeD, onboarding, permissions, territories, precinct) | 1 (tests) | 3 |
 | Phase 3 | 8 | 6 (models, group endpoints, endorsement, nearby GeDers) | 1 (tests) | 1 (GP-027 deferred) |
-| Phase 4 | 11 | 0 | 1 (tests) | 10 |
+| Phase 4 | 11 | 5 (positions, elections, lifecycle, hierarchy) | 1 (tests) | 5 |
 | Phase 5 | 11 | 0 | 1 (tests) | 10 |
 | Phase 6 | 11 | 0 | 1 (tests) | 10 |
 | Cross-Cutting | 3 | 0 | 0 | 3 |

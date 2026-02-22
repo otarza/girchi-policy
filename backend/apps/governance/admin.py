@@ -1,6 +1,106 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 
-from .models import Candidacy, Election, LeaderPosition, Vote
+from .models import Candidacy, Election, GovernanceTier, LeaderPosition, Vote
+
+
+@admin.action(description="Create fifty-leader positions where eligible")
+def create_fifty_positions(modeladmin, request, queryset):
+    """
+    Create tier=50 positions for precincts that have 5+ atistavis.
+    """
+    from apps.territories.models import Precinct
+
+    created_count = 0
+    skipped_count = 0
+
+    for precinct in Precinct.objects.all():
+        should_create, count = LeaderPosition.should_create_fifty_position(precinct)
+        if should_create:
+            # Check if position already exists
+            exists = LeaderPosition.objects.filter(
+                tier=GovernanceTier.FIFTY, precinct=precinct, is_active=True
+            ).exists()
+
+            if not exists:
+                LeaderPosition.objects.create(
+                    tier=GovernanceTier.FIFTY,
+                    precinct=precinct,
+                    district=precinct.district,
+                )
+                created_count += 1
+            else:
+                skipped_count += 1
+
+    messages.success(
+        request,
+        f"Created {created_count} fifty-leader positions. Skipped {skipped_count} existing positions.",
+    )
+
+
+@admin.action(description="Create hundred-leader positions where eligible")
+def create_hundred_positions(modeladmin, request, queryset):
+    """
+    Create tier=100 positions for districts that have 2+ fifty-leaders.
+    """
+    from apps.territories.models import District
+
+    created_count = 0
+    skipped_count = 0
+
+    for district in District.objects.all():
+        should_create, count = LeaderPosition.should_create_hundred_position(district)
+        if should_create:
+            # Check if position already exists
+            exists = LeaderPosition.objects.filter(
+                tier=GovernanceTier.HUNDRED, district=district, is_active=True
+            ).exists()
+
+            if not exists:
+                LeaderPosition.objects.create(
+                    tier=GovernanceTier.HUNDRED,
+                    district=district,
+                )
+                created_count += 1
+            else:
+                skipped_count += 1
+
+    messages.success(
+        request,
+        f"Created {created_count} hundred-leader positions. Skipped {skipped_count} existing positions.",
+    )
+
+
+@admin.action(description="Create thousand-leader positions where eligible")
+def create_thousand_positions(modeladmin, request, queryset):
+    """
+    Create tier=1000 positions when there are 10+ hundred-leaders.
+    """
+    created_count = 0
+    skipped_count = 0
+
+    should_create, count = LeaderPosition.should_create_thousand_position()
+    if should_create:
+        # Check if position already exists
+        exists = LeaderPosition.objects.filter(
+            tier=GovernanceTier.THOUSAND, is_active=True
+        ).exists()
+
+        if not exists:
+            LeaderPosition.objects.create(
+                tier=GovernanceTier.THOUSAND,
+            )
+            created_count += 1
+        else:
+            skipped_count += 1
+
+    if created_count > 0:
+        messages.success(request, f"Created {created_count} thousand-leader position.")
+    elif skipped_count > 0:
+        messages.info(request, "Thousand-leader position already exists.")
+    else:
+        messages.warning(
+            request, f"Cannot create thousand-leader position. Only {count} hundred-leaders exist (need 10+)."
+        )
 
 
 @admin.register(LeaderPosition)
@@ -29,6 +129,7 @@ class LeaderPositionAdmin(admin.ModelAdmin):
     readonly_fields = ["created_at", "tier_name", "territory_name", "is_vacant"]
     raw_id_fields = ["holder", "group", "precinct", "district", "parent"]
     date_hierarchy = "created_at"
+    actions = [create_fifty_positions, create_hundred_positions, create_thousand_positions]
 
     fieldsets = (
         (

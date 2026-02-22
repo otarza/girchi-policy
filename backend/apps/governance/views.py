@@ -160,8 +160,23 @@ class ElectionViewSet(viewsets.ModelViewSet):
         # Check if user is eligible candidate
         eligible_candidates = election.position.get_eligible_candidates()
         if user not in eligible_candidates:
+            # Provide tier-specific error messages
+            from .models import GovernanceTier
+
+            tier = election.position.tier
+            if tier == GovernanceTier.ATISTAVI:
+                message = "Only active members in this group can run for atistavi."
+            elif tier == GovernanceTier.FIFTY:
+                message = "Only atistavis in this precinct can run for fifty-leader."
+            elif tier == GovernanceTier.HUNDRED:
+                message = "Only fifty-leaders in this district can run for hundred-leader."
+            elif tier == GovernanceTier.THOUSAND:
+                message = "Only hundred-leaders can run for thousand-leader."
+            else:
+                message = "You are not eligible to run for this position."
+
             return Response(
-                {"detail": "You are not eligible to run for this position."},
+                {"detail": message},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -219,8 +234,23 @@ class ElectionViewSet(viewsets.ModelViewSet):
         # Check if user is eligible voter
         eligible_voters = election.position.get_eligible_voters()
         if user not in eligible_voters:
+            # Provide tier-specific error messages
+            from .models import GovernanceTier
+
+            tier = election.position.tier
+            if tier == GovernanceTier.ATISTAVI:
+                message = "Only verified members in this group can vote for atistavis."
+            elif tier == GovernanceTier.FIFTY:
+                message = "Only atistavis in this precinct can vote for fifty-leaders."
+            elif tier == GovernanceTier.HUNDRED:
+                message = "Only fifty-leaders in this district can vote for hundred-leaders."
+            elif tier == GovernanceTier.THOUSAND:
+                message = "Only hundred-leaders can vote for thousand-leaders."
+            else:
+                message = "You are not eligible to vote in this election."
+
             return Response(
-                {"detail": "You are not eligible to vote in this election."},
+                {"detail": message},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -293,4 +323,58 @@ class ElectionViewSet(viewsets.ModelViewSet):
         }
 
         serializer = ElectionResultsSerializer(results_data, context=self.get_serializer_context())
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def start_voting(self, request, pk=None):
+        """
+        Manually transition election to voting status.
+
+        Useful for testing or admin control.
+        Permissions: IsAuthenticated (for now; later can add IsAdminUser)
+
+        Business rules:
+        - Election must be in NOMINATION status
+        - Current time must be >= voting_start
+        """
+        election = self.get_object()
+
+        try:
+            election.transition_to_voting()
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(election)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def complete_election(self, request, pk=None):
+        """
+        Manually transition election to completed and trigger vote tallying.
+
+        Useful for testing or admin control.
+        Permissions: IsAuthenticated (for now; later can add IsAdminUser)
+
+        Business rules:
+        - Election must be in VOTING status
+        - Current time must be >= voting_end
+        - Triggers tally_election_results Celery task asynchronously
+        """
+        election = self.get_object()
+
+        try:
+            election.transition_to_completed()
+
+            # Trigger vote tallying asynchronously
+            from .tasks import tally_election_results
+
+            tally_election_results.delay(election.id)
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(election)
         return Response(serializer.data)
