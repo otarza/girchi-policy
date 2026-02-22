@@ -15,16 +15,18 @@ class UserAdmin(BaseUserAdmin):
         "is_phone_verified",
         "onboarding_completed",
         "is_diaspora",
+        "is_council_member",
         "created_at",
     ]
     list_filter = ["role", "member_status", "is_phone_verified", "onboarding_completed", "is_diaspora"]
     search_fields = ["phone_number", "personal_id_number", "first_name", "last_name"]
     ordering = ["-created_at"]
+    readonly_fields = ["is_council_member"]
 
     fieldsets = (
         (None, {"fields": ("phone_number", "password")}),
         ("Personal Info", {"fields": ("first_name", "last_name", "personal_id_number")}),
-        ("Role & Status", {"fields": ("role", "member_status", "is_diaspora")}),
+        ("Role & Status", {"fields": ("role", "member_status", "is_diaspora", "is_council_member")}),
         (
             "Onboarding",
             {
@@ -61,3 +63,10 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     )
+
+    def is_council_member(self, obj):
+        """Display whether user is a council member."""
+        return obj.is_council_member
+
+    is_council_member.boolean = True
+    is_council_member.short_description = "Council Member?"

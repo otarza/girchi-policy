@@ -469,6 +469,46 @@ class Election(models.Model):
         self.status = ElectionStatus.COMPLETED
         self.save(update_fields=["status"])
 
+    def get_eligible_voters(self):
+        """
+        Return queryset of users eligible to vote in this election.
+
+        Rules:
+        - Parliamentary: All GeDers (including diaspora)
+        - Hierarchy/Atistavi: Delegate to position.get_eligible_voters()
+        """
+        from apps.accounts.models import User
+
+        if self.election_type == ElectionType.PARLIAMENTARY:
+            # All GeDers can vote, including diaspora
+            return User.objects.filter(role=User.Role.GEDER)
+        else:
+            # Position-based elections delegate to LeaderPosition logic
+            if not self.position:
+                return User.objects.none()
+            return self.position.get_eligible_voters()
+
+    def get_eligible_candidates(self):
+        """
+        Return queryset of users eligible to run in this election.
+
+        Rules:
+        - Parliamentary: Active GeDers (member_status='active')
+        - Hierarchy/Atistavi: Delegate to position.get_eligible_candidates()
+        """
+        from apps.accounts.models import User
+
+        if self.election_type == ElectionType.PARLIAMENTARY:
+            # Only active GeDers can run for parliamentary positions
+            return User.objects.filter(
+                role=User.Role.GEDER, member_status=User.MemberStatus.ACTIVE
+            )
+        else:
+            # Position-based elections delegate to LeaderPosition logic
+            if not self.position:
+                return User.objects.none()
+            return self.position.get_eligible_candidates()
+
 
 class Candidacy(models.Model):
     """

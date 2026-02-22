@@ -1,6 +1,7 @@
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -158,22 +159,32 @@ class ElectionViewSet(viewsets.ModelViewSet):
             )
 
         # Check if user is eligible candidate
-        eligible_candidates = election.position.get_eligible_candidates()
+        eligible_candidates = election.get_eligible_candidates()
         if user not in eligible_candidates:
-            # Provide tier-specific error messages
-            from .models import GovernanceTier
+            # Provide election-type-specific error messages
+            from .models import ElectionType, GovernanceTier
+            from apps.accounts.models import User as UserModel
 
-            tier = election.position.tier
-            if tier == GovernanceTier.ATISTAVI:
-                message = "Only active members in this group can run for atistavi."
-            elif tier == GovernanceTier.FIFTY:
-                message = "Only atistavis in this precinct can run for fifty-leader."
-            elif tier == GovernanceTier.HUNDRED:
-                message = "Only fifty-leaders in this district can run for hundred-leader."
-            elif tier == GovernanceTier.THOUSAND:
-                message = "Only hundred-leaders can run for thousand-leader."
+            if election.election_type == ElectionType.PARLIAMENTARY:
+                if user.role != UserModel.Role.GEDER:
+                    message = "Only GeDers can run in parliamentary elections."
+                elif user.member_status != UserModel.MemberStatus.ACTIVE:
+                    message = "Only active members can run in parliamentary elections."
+                else:
+                    message = "You are not eligible to run in this election."
             else:
-                message = "You are not eligible to run for this position."
+                # Tier-specific messages for hierarchy elections
+                tier = election.position.tier if election.position else None
+                if tier == GovernanceTier.ATISTAVI:
+                    message = "Only active members in this group can run for atistavi."
+                elif tier == GovernanceTier.FIFTY:
+                    message = "Only atistavis in this precinct can run for fifty-leader."
+                elif tier == GovernanceTier.HUNDRED:
+                    message = "Only fifty-leaders in this district can run for hundred-leader."
+                elif tier == GovernanceTier.THOUSAND:
+                    message = "Only hundred-leaders can run for thousand-leader."
+                else:
+                    message = "You are not eligible to run for this position."
 
             return Response(
                 {"detail": message},
@@ -232,22 +243,30 @@ class ElectionViewSet(viewsets.ModelViewSet):
             )
 
         # Check if user is eligible voter
-        eligible_voters = election.position.get_eligible_voters()
+        eligible_voters = election.get_eligible_voters()
         if user not in eligible_voters:
-            # Provide tier-specific error messages
-            from .models import GovernanceTier
+            # Provide election-type-specific error messages
+            from .models import ElectionType, GovernanceTier
+            from apps.accounts.models import User as UserModel
 
-            tier = election.position.tier
-            if tier == GovernanceTier.ATISTAVI:
-                message = "Only verified members in this group can vote for atistavis."
-            elif tier == GovernanceTier.FIFTY:
-                message = "Only atistavis in this precinct can vote for fifty-leaders."
-            elif tier == GovernanceTier.HUNDRED:
-                message = "Only fifty-leaders in this district can vote for hundred-leaders."
-            elif tier == GovernanceTier.THOUSAND:
-                message = "Only hundred-leaders can vote for thousand-leaders."
+            if election.election_type == ElectionType.PARLIAMENTARY:
+                if user.role != UserModel.Role.GEDER:
+                    message = "Only GeDers can vote in parliamentary elections."
+                else:
+                    message = "You are not eligible to vote in this election."
             else:
-                message = "You are not eligible to vote in this election."
+                # Tier-specific messages for hierarchy elections
+                tier = election.position.tier if election.position else None
+                if tier == GovernanceTier.ATISTAVI:
+                    message = "Only verified members in this group can vote for atistavis."
+                elif tier == GovernanceTier.FIFTY:
+                    message = "Only atistavis in this precinct can vote for fifty-leaders."
+                elif tier == GovernanceTier.HUNDRED:
+                    message = "Only fifty-leaders in this district can vote for hundred-leaders."
+                elif tier == GovernanceTier.THOUSAND:
+                    message = "Only hundred-leaders can vote for thousand-leaders."
+                else:
+                    message = "You are not eligible to vote in this election."
 
             return Response(
                 {"detail": message},
@@ -310,7 +329,7 @@ class ElectionViewSet(viewsets.ModelViewSet):
         total_votes = election.votes.count()
 
         # Calculate total eligible voters
-        total_eligible_voters = election.position.get_eligible_voters().count()
+        total_eligible_voters = election.get_eligible_voters().count()
 
         # Prepare results data
         results_data = {
@@ -378,3 +397,163 @@ class ElectionViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(election)
         return Response(serializer.data)
+
+
+class LeaderPositionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for LeaderPosition list and detail operations.
+
+    Permissions:
+    - List/Retrieve: IsAuthenticated
+
+    Query parameters:
+    - tier: Filter by governance tier (10, 50, 100, 1000)
+    - precinct_id: Filter positions in a specific precinct
+    - district_id: Filter positions in a specific district
+    - is_active: Filter active/inactive positions (true/false)
+    - is_vacant: Filter vacant positions (true/false)
+
+    Actions:
+    - list: GET /api/v1/governance/positions/
+    - retrieve: GET /api/v1/governance/positions/{id}/
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Return positions with optimizations and optional filtering.
+        """
+        queryset = LeaderPosition.objects.select_related(
+            "group",
+            "precinct__district__region",
+            "district__region",
+            "holder",
+            "parent",
+        )
+
+        # Filter by tier
+        tier_filter = self.request.query_params.get("tier")
+        if tier_filter:
+            queryset = queryset.filter(tier=tier_filter)
+
+        # Filter by precinct
+        precinct_id = self.request.query_params.get("precinct_id")
+        if precinct_id:
+            queryset = queryset.filter(precinct_id=precinct_id)
+
+        # Filter by district
+        district_id = self.request.query_params.get("district_id")
+        if district_id:
+            queryset = queryset.filter(district_id=district_id)
+
+        # Filter by is_active
+        is_active = self.request.query_params.get("is_active")
+        if is_active is not None:
+            # Convert string to boolean
+            is_active_bool = is_active.lower() == "true"
+            queryset = queryset.filter(is_active=is_active_bool)
+
+        # Filter by is_vacant (holder is null)
+        is_vacant = self.request.query_params.get("is_vacant")
+        if is_vacant is not None:
+            is_vacant_bool = is_vacant.lower() == "true"
+            if is_vacant_bool:
+                queryset = queryset.filter(holder__isnull=True)
+            else:
+                queryset = queryset.filter(holder__isnull=False)
+
+        return queryset.order_by("tier", "-created_at")
+
+    def get_serializer_class(self):
+        """Return different serializers for different actions."""
+        if self.action == "list":
+            from .serializers import LeaderPositionListSerializer
+
+            return LeaderPositionListSerializer
+        from .serializers import LeaderPositionDetailSerializer
+
+        return LeaderPositionDetailSerializer
+
+
+class HierarchyTreeView(APIView):
+    """
+    View for governance hierarchy tree.
+
+    GET /api/v1/governance/hierarchy/
+
+    Query parameters:
+    - district_id: Filter to specific district (shows 100→50→10)
+    - precinct_id: Filter to specific precinct (shows 50→10)
+    - max_depth: Maximum tree depth (1-4, default=4)
+
+    Returns nested tree structure.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import GovernanceTier, LeaderPosition
+        from .serializers import HierarchyNodeSerializer
+
+        district_id = request.query_params.get("district_id")
+        precinct_id = request.query_params.get("precinct_id")
+
+        # Determine starting tier based on filters
+        if precinct_id:
+            # Precinct level: start from tier=50
+            queryset = LeaderPosition.objects.filter(
+                tier=GovernanceTier.FIFTY,
+                precinct_id=precinct_id,
+                is_active=True,
+            )
+            start_tier = "50 (Precinct)"
+        elif district_id:
+            # District level: start from tier=100
+            queryset = LeaderPosition.objects.filter(
+                tier=GovernanceTier.HUNDRED,
+                district_id=district_id,
+                is_active=True,
+            )
+            start_tier = "100 (District)"
+        else:
+            # Party-wide: start from tier=1000
+            queryset = LeaderPosition.objects.filter(
+                tier=GovernanceTier.THOUSAND, is_active=True
+            )
+            start_tier = "1000 (Council)"
+
+        # Optimize query
+        queryset = queryset.select_related(
+            "holder", "district", "precinct", "group", "parent"
+        )
+
+        # Get max depth
+        max_depth_param = request.query_params.get("max_depth", "4")
+        try:
+            max_depth = int(max_depth_param)
+            max_depth = min(max(max_depth, 1), 4)  # Clamp to 1-4
+        except ValueError:
+            max_depth = 4
+
+        # Serialize with recursive children
+        context = {
+            "include_children": True,
+            "max_depth": max_depth,
+            "current_depth": 0,
+        }
+
+        serializer = HierarchyNodeSerializer(queryset, many=True, context=context)
+
+        return Response(
+            {
+                "start_tier": start_tier,
+                "hierarchy": serializer.data,
+                "filters": {
+                    "district_id": district_id,
+                    "precinct_id": precinct_id,
+                    "max_depth": max_depth,
+                },
+                "total_positions": queryset.count(),
+            }
+        )

@@ -4,7 +4,7 @@
 > Status: `[ ]` = todo, `[x]` = done, `[-]` = skipped
 
 > **Last updated:** 2026-02-22
-> **Current phase:** Phase 4 in progress. GP-033 through GP-037 complete (positions, elections, lifecycle, hierarchy logic). Next: GP-038 (council auto-assignment).
+> **Current phase:** Phase 4 in progress. GP-033 through GP-041 complete (governance system fully implemented). Next: GP-042 (permission classes). Phase 4: 9/11 complete (82%).
 
 ---
 
@@ -261,23 +261,23 @@
   - Validate voter eligibility based on tier
   - **AC:** Each hierarchy tier election restricts voters to correct set of leaders
 
-- [ ] **GP-038** [P0] Council member auto-assignment
+- [x] **GP-038** [P0] Council member auto-assignment
   - When a user becomes 1000-leader, automatically flag as council (satatbiro) member
   - (This could be a computed property or a flag on LeaderPosition)
   - **AC:** 1000-leaders identified as council members in API responses
 
-- [ ] **GP-039** [P1] Parliamentary list election
+- [x] **GP-039** [P1] Parliamentary list election
   - Separate election_type='parliamentary'
   - All GeDers can vote (no territorial restriction)
   - No position FK (party-level election)
   - **AC:** Parliamentary election works with GeDer-only voter pool
 
-- [ ] **GP-040** [P0] Position and election list endpoints
+- [x] **GP-040** [P0] Position and election list endpoints
   - `GET /api/v1/governance/positions/?tier=&precinct_id=&district_id=`
   - `GET /api/v1/governance/elections/?status=&election_type=`
   - **AC:** Filterable list endpoints return correct data
 
-- [ ] **GP-041** [P1] Hierarchy tree endpoint
+- [x] **GP-041** [P1] Hierarchy tree endpoint
   - `GET /api/v1/governance/hierarchy/?district_id=`
   - Returns nested tree: 1000-leader → 100-leaders → 50-leaders → atistavis
   - **AC:** Tree correctly represents hierarchy for visualization
@@ -470,7 +470,7 @@
 | Phase 1 | 14 | 12 | 2 (CI, tests) | 0 |
 | Phase 2 | 10 | 6 (GeD, onboarding, permissions, territories, precinct) | 1 (tests) | 3 |
 | Phase 3 | 8 | 6 (models, group endpoints, endorsement, nearby GeDers) | 1 (tests) | 1 (GP-027 deferred) |
-| Phase 4 | 11 | 5 (positions, elections, lifecycle, hierarchy) | 1 (tests) | 5 |
+| Phase 4 | 11 | 9 (positions, elections, lifecycle, hierarchy, council, parliamentary, list, tree) | 1 (tests) | 1 |
 | Phase 5 | 11 | 0 | 1 (tests) | 10 |
 | Phase 6 | 11 | 0 | 1 (tests) | 10 |
 | Cross-Cutting | 3 | 0 | 0 | 3 |

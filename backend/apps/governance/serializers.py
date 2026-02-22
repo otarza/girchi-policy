@@ -42,6 +42,174 @@ class LeaderPositionMinimalSerializer(serializers.ModelSerializer):
         return None
 
 
+class LeaderPositionListSerializer(serializers.ModelSerializer):
+    """
+    Optimized serializer for position list view.
+    Includes holder details and territory name for display.
+    """
+
+    tier_name = serializers.CharField(read_only=True)
+    territory_name = serializers.CharField(read_only=True)
+    is_vacant = serializers.BooleanField(read_only=True)
+    holder = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LeaderPosition
+        fields = [
+            "id",
+            "tier",
+            "tier_name",
+            "territory_name",
+            "holder",
+            "held_since",
+            "is_vacant",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_holder(self, obj):
+        """Return holder user details if position is held."""
+        if not obj.holder:
+            return None
+        return {
+            "id": obj.holder.id,
+            "phone_number": obj.holder.phone_number,
+            "full_name": obj.holder.get_full_name(),
+            "role": obj.holder.role,
+        }
+
+
+class LeaderPositionDetailSerializer(serializers.ModelSerializer):
+    """
+    Full serializer for position detail view.
+    Includes nested territory data, parent/children relationships.
+    """
+
+    tier_name = serializers.CharField(read_only=True)
+    territory_name = serializers.CharField(read_only=True)
+    is_vacant = serializers.BooleanField(read_only=True)
+    holder = serializers.SerializerMethodField()
+    group = serializers.SerializerMethodField()
+    precinct = serializers.SerializerMethodField()
+    district = serializers.SerializerMethodField()
+    parent = LeaderPositionMinimalSerializer(read_only=True)
+
+    class Meta:
+        model = LeaderPosition
+        fields = [
+            "id",
+            "tier",
+            "tier_name",
+            "territory_name",
+            "group",
+            "precinct",
+            "district",
+            "holder",
+            "held_since",
+            "is_vacant",
+            "is_active",
+            "parent",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_holder(self, obj):
+        """Return detailed holder information."""
+        if not obj.holder:
+            return None
+        return {
+            "id": obj.holder.id,
+            "phone_number": obj.holder.phone_number,
+            "full_name": obj.holder.get_full_name(),
+            "role": obj.holder.role,
+            "member_status": obj.holder.member_status,
+        }
+
+    def get_group(self, obj):
+        """Return group details if tier=10."""
+        if not obj.group:
+            return None
+        return {
+            "id": obj.group.id,
+            "name": obj.group.name,
+        }
+
+    def get_precinct(self, obj):
+        """Return precinct details if set."""
+        if not obj.precinct:
+            return None
+        return {
+            "id": obj.precinct.id,
+            "name": obj.precinct.name,
+            "name_ka": obj.precinct.name_ka,
+        }
+
+    def get_district(self, obj):
+        """Return district details if set."""
+        if not obj.district:
+            return None
+        return {
+            "id": obj.district.id,
+            "name": obj.district.name,
+            "name_ka": obj.district.name_ka,
+        }
+
+
+class HierarchyNodeSerializer(serializers.Serializer):
+    """
+    Serializer for a single position in the hierarchy tree.
+    Includes nested children for recursive tree structure.
+    """
+
+    id = serializers.IntegerField()
+    tier = serializers.IntegerField()
+    tier_name = serializers.CharField()
+    territory_name = serializers.CharField()
+    holder = serializers.SerializerMethodField()
+    is_vacant = serializers.BooleanField()
+    children = serializers.SerializerMethodField()
+
+    def get_holder(self, obj):
+        """Return holder details."""
+        if not obj.holder:
+            return None
+        return {
+            "id": obj.holder.id,
+            "phone_number": obj.holder.phone_number,
+            "full_name": obj.holder.get_full_name(),
+            "role": obj.holder.role,
+        }
+
+    def get_children(self, obj):
+        """
+        Return children positions at the tier below.
+        Recursively serializes child positions.
+        """
+        # Get context to check if we should include children
+        include_children = self.context.get("include_children", True)
+        max_depth = self.context.get("max_depth", 4)  # Default: all 4 tiers
+        current_depth = self.context.get("current_depth", 0)
+
+        if not include_children or current_depth >= max_depth:
+            return []
+
+        # Get child positions using the helper method
+        child_positions = obj.get_child_positions()
+
+        if not child_positions.exists():
+            return []
+
+        # Increment depth for recursion
+        child_context = self.context.copy()
+        child_context["current_depth"] = current_depth + 1
+
+        # Serialize children recursively
+        return HierarchyNodeSerializer(
+            child_positions, many=True, context=child_context
+        ).data
+
+
 # ============================================================================
 # CANDIDACY SERIALIZERS
 # ============================================================================
@@ -147,7 +315,7 @@ class ElectionDetailSerializer(serializers.ModelSerializer):
     Includes nested position and candidacies.
     """
 
-    position = LeaderPositionMinimalSerializer(read_only=True)
+    position = LeaderPositionMinimalSerializer(read_only=True, allow_null=True)
     candidacies = CandidacySerializer(many=True, read_only=True)
     total_votes = serializers.IntegerField(read_only=True)
 
@@ -179,7 +347,9 @@ class ElectionCreateSerializer(serializers.ModelSerializer):
         queryset=LeaderPosition.objects.all(),
         source="position",
         write_only=True,
-        help_text="ID of the position being elected",
+        required=False,
+        allow_null=True,
+        help_text="ID of the position being elected (null for parliamentary elections)",
     )
 
     class Meta:
@@ -195,9 +365,34 @@ class ElectionCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Validate that election schedule makes sense:
-        nomination_end <= voting_start <= voting_end
+        Validate election creation based on election type and schedule.
+
+        Rules:
+        - Parliamentary elections: position must be None
+        - Hierarchy/Atistavi elections: position is required
+        - Schedule: nomination_end <= voting_start <= voting_end
         """
+        from .models import ElectionType
+
+        election_type = data.get("election_type")
+        position = data.get("position")
+
+        # Validate position based on election type
+        if election_type == ElectionType.PARLIAMENTARY:
+            if position is not None:
+                raise serializers.ValidationError(
+                    {"position_id": "Parliamentary elections cannot have a position."}
+                )
+        else:
+            # Hierarchy or atistavi elections require a position
+            if position is None:
+                raise serializers.ValidationError(
+                    {
+                        "position_id": "Position is required for atistavi and hierarchy elections."
+                    }
+                )
+
+        # Validate schedule
         nomination_end = data.get("nomination_end")
         voting_start = data.get("voting_start")
         voting_end = data.get("voting_end")

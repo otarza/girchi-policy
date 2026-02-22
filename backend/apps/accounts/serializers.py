@@ -28,6 +28,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     precinct = PrecinctSerializer(read_only=True)
+    is_council_member = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -45,6 +46,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "onboarding_completed",
             "constitution_accepted",
             "join_reason",
+            "is_council_member",
             "created_at",
         ]
         read_only_fields = [
@@ -55,6 +57,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "is_phone_verified",
             "onboarding_completed",
             "constitution_accepted",
+            "is_council_member",
             "created_at",
         ]
 
