@@ -44,6 +44,9 @@ LOCAL_APPS = [
     "apps.territories",
     "apps.communities",
     "apps.governance",
+    "apps.sos",
+    "apps.initiatives",
+    "apps.arbitration",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -183,6 +186,29 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+CELERY_BEAT_SCHEDULE = {
+    # Governance: auto-transition elections every 15 minutes
+    "close-expired-elections": {
+        "task": "apps.governance.tasks.close_expired_elections",
+        "schedule": 60 * 15,  # 15 minutes
+    },
+    # SOS: auto-escalate stale reports every hour
+    "escalate-sos-timeout": {
+        "task": "apps.sos.tasks.escalate_sos_timeout",
+        "schedule": 60 * 60,  # 1 hour
+    },
+    # Initiatives: detect threshold-met initiatives every 30 minutes
+    "check-initiative-thresholds": {
+        "task": "apps.initiatives.tasks.check_initiative_thresholds",
+        "schedule": 60 * 30,  # 30 minutes
+    },
+    # Arbitration: auto-close decided cases daily
+    "auto-close-decided-cases": {
+        "task": "apps.arbitration.tasks.auto_close_decided_cases",
+        "schedule": 60 * 60 * 24,  # 24 hours
+    },
+}
 
 # --- drf-spectacular ---
 
