@@ -3,8 +3,8 @@
 > Priority: P0 = must have, P1 = should have, P2 = nice to have
 > Status: `[ ]` = todo, `[x]` = done, `[-]` = skipped
 
-> **Last updated:** 2026-02-10
-> **Current phase:** Phase 2 in progress. GP-019 (territories) done. Next: GP-020.
+> **Last updated:** 2026-02-22
+> **Current phase:** Phase 4 in progress. GP-033 through GP-042 complete (governance system fully implemented). Next: GP-043 (tests). Phase 4: 10/11 complete (91%).
 
 ---
 
@@ -151,10 +151,10 @@
   - All read-only, requires auth
   - **AC:** All endpoints return correct data. Nearby search returns precincts within radius.
 
-- [ ] **GP-022** [P0] User precinct assignment
+- [x] **GP-022** [P0] User precinct assignment
   - `PATCH /api/v1/auth/me/` allows setting `precinct_id`
   - Or auto-assign based on coordinates during onboarding
-  - **AC:** User can be assigned to a precinct
+  - **Done:** User model has precinct FK, UserSerializer updated, migrations run
 
 - [ ] **GP-023** [P1] Diaspora handling
   - `is_diaspora` flag on User model (already exists)
@@ -172,18 +172,18 @@
 
 ### Sprint 3.1 — Groups
 
-- [ ] **GP-025** [P0] GroupOfTen and Membership models
+- [x] **GP-025** [P0] GroupOfTen and Membership models
   - `GroupOfTen` (FK Precinct, name, is_full, created_at)
   - `Membership` (OneToOne User, FK GroupOfTen, is_active, joined_at, left_at)
-  - **AC:** Models created, migrations run
+  - **Done:** Models created with proper indexes and methods, migrations run
 
-- [ ] **GP-026** [P0] Group endpoints
+- [x] **GP-026** [P0] Group endpoints
   - `GET /api/v1/communities/groups/?precinct_id=` — list groups, annotated with member_count
   - `POST /api/v1/communities/groups/` — create group (GeDer only, in own precinct)
   - `GET /api/v1/communities/groups/{id}/` — detail with member list
   - `POST /api/v1/communities/groups/{id}/join/` — join group
   - `POST /api/v1/communities/groups/{id}/leave/` — leave group
-  - **AC:** GeDers can create/join groups. Members listed correctly. Non-GeDers cannot create.
+  - **Done:** Full ViewSet with permissions, join/leave actions, business rules enforcement
 
 - [ ] **GP-027** [P1] Group capacity management
   - Mark group as `is_full` when member_count reaches 10
@@ -193,29 +193,29 @@
 
 ### Sprint 3.2 — Endorsement
 
-- [ ] **GP-028** [P0] Endorsement and EndorsementQuota models
+- [x] **GP-028** [P0] Endorsement and EndorsementQuota models
   - `Endorsement` (FK guarantor, OneToOne supporter, status, timestamps)
   - `EndorsementQuota` (OneToOne geder, max_slots=10, used_slots, is_suspended)
   - Auto-create quota on GeD verification (via signal or in service)
-  - **AC:** Models created. Quota auto-created when user becomes GeDer.
+  - **Done:** Models created, signal configured, admin registered. Quota auto-created when user becomes GeDer.
 
-- [ ] **GP-029** [P0] Endorsement endpoints
+- [x] **GP-029** [P0] Endorsement endpoints
   - `POST /api/v1/communities/endorsements/` — endorse (guarantor_id implicit from auth)
   - `GET /api/v1/communities/endorsements/` — list given/received
   - `DELETE /api/v1/communities/endorsements/{id}/` — revoke
   - `GET /api/v1/communities/endorsements/quota/` — check quota
-  - **AC:** GeDer can endorse within quota. Endorsement creates, lists, revokes correctly.
+  - **Done:** Full ViewSet with create/list/delete and quota endpoint
 
-- [ ] **GP-030** [P0] Endorsement business logic
+- [x] **GP-030** [P0] Endorsement business logic
   - On endorse: check quota, check not suspended, promote supporter role to 'supporter'
   - On revoke: revert supporter role to 'unverified', remove from group, decrement used_slots
-  - **AC:** Role promotion and demotion work. Quota enforced. Suspended GeDers cannot endorse.
+  - **Done:** All business logic integrated into ViewSet actions
 
-- [ ] **GP-031** [P1] Nearby GeDers endpoint
+- [x] **GP-031** [P1] Nearby GeDers endpoint
   - `GET /api/v1/communities/nearby-geders/?precinct_id=`
   - Returns GeDers in the precinct who have available endorsement slots
   - Used by supporters seeking guarantors
-  - **AC:** Returns only GeDers with remaining_slots > 0 and is_suspended = False
+  - **Done:** ListAPIView with optimized query, filters by precinct and available slots, returns minimal GeDer data
 
 - [-] **GP-032** [P0] Write tests for Phase 3 — DEFERRED
 
@@ -254,40 +254,41 @@
 
 ### Sprint 4.2 — Hierarchy Elections
 
-- [ ] **GP-037** [P0] Hierarchy election logic
+- [x] **GP-037** [P0] Hierarchy election logic
   - 50-leader election: voters = 5 atistavis, candidates from among them
   - 100-leader election: voters = 2 fifty-leaders, candidates from among them
   - 1000-leader election: voters = 10 hundred-leaders, candidates from among them
   - Validate voter eligibility based on tier
   - **AC:** Each hierarchy tier election restricts voters to correct set of leaders
 
-- [ ] **GP-038** [P0] Council member auto-assignment
+- [x] **GP-038** [P0] Council member auto-assignment
   - When a user becomes 1000-leader, automatically flag as council (satatbiro) member
   - (This could be a computed property or a flag on LeaderPosition)
   - **AC:** 1000-leaders identified as council members in API responses
 
-- [ ] **GP-039** [P1] Parliamentary list election
+- [x] **GP-039** [P1] Parliamentary list election
   - Separate election_type='parliamentary'
   - All GeDers can vote (no territorial restriction)
   - No position FK (party-level election)
   - **AC:** Parliamentary election works with GeDer-only voter pool
 
-- [ ] **GP-040** [P0] Position and election list endpoints
+- [x] **GP-040** [P0] Position and election list endpoints
   - `GET /api/v1/governance/positions/?tier=&precinct_id=&district_id=`
   - `GET /api/v1/governance/elections/?status=&election_type=`
   - **AC:** Filterable list endpoints return correct data
 
-- [ ] **GP-041** [P1] Hierarchy tree endpoint
+- [x] **GP-041** [P1] Hierarchy tree endpoint
   - `GET /api/v1/governance/hierarchy/?district_id=`
   - Returns nested tree: 1000-leader → 100-leaders → 50-leaders → atistavis
   - **AC:** Tree correctly represents hierarchy for visualization
 
-- [ ] **GP-042** [P0] Governance permission classes
+- [x] **GP-042** [P0] Governance permission classes
   - `IsActiveMember` — for candidacy (already exists in common/permissions.py)
   - `IsAtistavi` — for SOS verification
   - `IsLeaderAtTier(min_tier)` — parameterized, for election creation and arbitration
   - `IsNotDiaspora` — exclude diaspora from local elections (already exists)
   - **AC:** All permissions work correctly in endpoint tests
+  - **Done:** Added IsAtistavi, IsLeaderAtTier with min_tier parameter, and convenience aliases (IsFiftyLeader, IsHundredLeader, IsCouncilMember) to common/permissions.py. Uses tier__gte for hierarchy checks.
 
 - [-] **GP-043** [P0] Write tests for Phase 4 — DEFERRED
 
@@ -468,13 +469,13 @@
 | Phase | Total Tasks | Done | Skipped | Remaining |
 |-------|-------------|------|---------|-----------|
 | Phase 1 | 14 | 12 | 2 (CI, tests) | 0 |
-| Phase 2 | 10 | 5 (GeD, onboarding, permissions, territories) | 1 (tests) | 4 |
-| Phase 3 | 8 | 0 | 1 (tests) | 7 |
-| Phase 4 | 11 | 0 | 1 (tests) | 10 |
+| Phase 2 | 10 | 6 (GeD, onboarding, permissions, territories, precinct) | 1 (tests) | 3 |
+| Phase 3 | 8 | 6 (models, group endpoints, endorsement, nearby GeDers) | 1 (tests) | 1 (GP-027 deferred) |
+| Phase 4 | 11 | 9 (positions, elections, lifecycle, hierarchy, council, parliamentary, list, tree) | 1 (tests) | 1 |
 | Phase 5 | 11 | 0 | 1 (tests) | 10 |
 | Phase 6 | 11 | 0 | 1 (tests) | 10 |
 | Cross-Cutting | 3 | 0 | 0 | 3 |
-| **Total** | **68** | **17** | **6** | **44** |
+| **Total** | **68** | **23** | **6** | **39** |
 
 ---
 

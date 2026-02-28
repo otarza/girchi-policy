@@ -61,6 +61,15 @@ class User(AbstractUser):
     # Diaspora
     is_diaspora = models.BooleanField(default=False)
 
+    # Territory assignment
+    precinct = models.ForeignKey(
+        "territories.Precinct",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users",
+    )
+
     # Phone verification
     is_phone_verified = models.BooleanField(default=False)
 
@@ -76,8 +85,38 @@ class User(AbstractUser):
     class Meta:
         indexes = [
             models.Index(fields=["personal_id_number"]),
+            models.Index(fields=["precinct", "role"]),
         ]
 
     def __str__(self):
         name = self.get_full_name() or self.phone_number
         return f"{name} ({self.role})"
+
+    @property
+    def is_council_member(self):
+        """
+        Check if user holds a tier=1000 (council) position.
+
+        Council members (satatbiro) are users who hold thousand-leader positions.
+        Returns True if user currently holds any active tier=1000 position.
+        """
+        from apps.governance.models import GovernanceTier
+
+        return self.held_positions.filter(
+            tier=GovernanceTier.THOUSAND, is_active=True
+        ).exists()
+
+    @classmethod
+    def get_council_members(cls):
+        """
+        Return queryset of all users who hold tier=1000 (council) positions.
+
+        Returns:
+            QuerySet: Users who are council members (hold active tier=1000 positions)
+        """
+        from apps.governance.models import GovernanceTier
+
+        return cls.objects.filter(
+            held_positions__tier=GovernanceTier.THOUSAND,
+            held_positions__is_active=True,
+        ).distinct()

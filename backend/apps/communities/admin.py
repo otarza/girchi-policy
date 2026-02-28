@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import GroupOfTen, Membership
+from .models import Endorsement, EndorsementQuota, GroupOfTen, Membership
 
 
 @admin.register(GroupOfTen)
@@ -44,3 +44,53 @@ class MembershipAdmin(admin.ModelAdmin):
     readonly_fields = ["joined_at"]
     raw_id_fields = ["user", "group"]
     date_hierarchy = "joined_at"
+
+
+@admin.register(Endorsement)
+class EndorsementAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "guarantor",
+        "supporter",
+        "status",
+        "created_at",
+        "revoked_at",
+    ]
+    list_filter = ["status", "created_at", "revoked_at"]
+    search_fields = [
+        "guarantor__phone_number",
+        "guarantor__first_name",
+        "guarantor__last_name",
+        "supporter__phone_number",
+        "supporter__first_name",
+        "supporter__last_name",
+    ]
+    readonly_fields = ["created_at"]
+    raw_id_fields = ["guarantor", "supporter"]
+    date_hierarchy = "created_at"
+
+
+@admin.register(EndorsementQuota)
+class EndorsementQuotaAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "geder",
+        "used_slots",
+        "max_slots",
+        "get_remaining_slots",
+        "is_suspended",
+        "suspended_at",
+    ]
+    list_filter = ["is_suspended", "suspended_at"]
+    search_fields = [
+        "geder__phone_number",
+        "geder__first_name",
+        "geder__last_name",
+    ]
+    readonly_fields = ["get_remaining_slots"]
+    raw_id_fields = ["geder"]
+
+    def get_remaining_slots(self, obj):
+        return obj.remaining_slots
+
+    get_remaining_slots.short_description = "Remaining"

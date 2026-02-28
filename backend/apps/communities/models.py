@@ -2,6 +2,94 @@ from django.conf import settings
 from django.db import models
 
 
+class Endorsement(models.Model):
+    """
+    Endorsement relationship where a GeDer vouches for a supporter.
+    GeDers can endorse up to their quota limit (default 10).
+    If an endorsed user is fraudulent, the guarantor faces penalties.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        REVOKED = "revoked", "Revoked"
+        PENALIZED = "penalized", "Penalized"
+
+    guarantor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="endorsements_given",
+        help_text="GeDer who vouches for the supporter",
+    )
+    supporter = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="endorsement",
+        help_text="User being endorsed",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoke_reason = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Endorsement"
+        verbose_name_plural = "Endorsements"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["guarantor", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.guarantor.phone_number} → {self.supporter.phone_number} ({self.status})"
+
+
+class EndorsementQuota(models.Model):
+    """
+    Tracks a GeDer's endorsement capacity and usage.
+    Automatically created when user becomes GeDer.
+    Can be suspended as penalty for endorsing fraudulent users.
+    """
+
+    geder = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="endorsement_quota",
+    )
+    max_slots = models.PositiveSmallIntegerField(
+        default=10, help_text="Maximum number of endorsements allowed"
+    )
+    used_slots = models.PositiveSmallIntegerField(
+        default=0, help_text="Number of active endorsements"
+    )
+    is_suspended = models.BooleanField(
+        default=False, help_text="Penalty: cannot endorse if suspended"
+    )
+    suspended_at = models.DateTimeField(null=True, blank=True)
+    suspended_reason = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Endorsement Quota"
+        verbose_name_plural = "Endorsement Quotas"
+
+    def __str__(self):
+        return f"{self.geder.phone_number}: {self.used_slots}/{self.max_slots}"
+
+    @property
+    def remaining_slots(self):
+        """Calculate remaining endorsement capacity."""
+        return max(0, self.max_slots - self.used_slots)
+
+    @property
+    def can_endorse(self):
+        """Check if GeDer can endorse more users."""
+        return not self.is_suspended and self.remaining_slots > 0
+
+
 class GroupOfTen(models.Model):
     """
     Group of up to 10 members (ateuli) within a precinct.

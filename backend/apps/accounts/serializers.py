@@ -3,6 +3,9 @@ from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.territories.models import Precinct
+from apps.territories.serializers import PrecinctSerializer
+
 User = get_user_model()
 
 
@@ -24,6 +27,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    precinct = PrecinctSerializer(read_only=True)
+    is_council_member = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
         fields = [
@@ -35,10 +41,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "role",
             "member_status",
             "is_diaspora",
+            "precinct",
             "is_phone_verified",
             "onboarding_completed",
             "constitution_accepted",
             "join_reason",
+            "is_council_member",
             "created_at",
         ]
         read_only_fields = [
@@ -49,11 +57,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "is_phone_verified",
             "onboarding_completed",
             "constitution_accepted",
+            "is_council_member",
             "created_at",
         ]
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    precinct_id = serializers.PrimaryKeyRelatedField(
+        queryset=Precinct.objects.all(),
+        source="precinct",
+        required=False,
+        allow_null=True,
+    )
+
     class Meta:
         model = User
         fields = [
@@ -61,6 +77,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             "last_name",
             "member_status",
             "is_diaspora",
+            "precinct_id",
         ]
 
 
