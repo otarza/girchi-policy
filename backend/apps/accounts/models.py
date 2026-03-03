@@ -120,3 +120,45 @@ class User(AbstractUser):
             held_positions__tier=GovernanceTier.THOUSAND,
             held_positions__is_active=True,
         ).distinct()
+
+
+class Notification(models.Model):
+    """
+    In-app notification for a user.
+
+    Stub for future WebSocket/push integration. Stores basic notification
+    data that the mobile app can poll and mark as read.
+    """
+
+    class NotificationType(models.TextChoices):
+        SOS = "sos", "SOS Update"
+        ELECTION = "election", "Election"
+        ENDORSEMENT = "endorsement", "Endorsement"
+        INITIATIVE = "initiative", "Initiative"
+        ARBITRATION = "arbitration", "Arbitration"
+        SYSTEM = "system", "System"
+
+    user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=NotificationType.choices,
+        default=NotificationType.SYSTEM,
+        db_index=True,
+    )
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "is_read"]),
+        ]
+
+    def __str__(self):
+        return f"[{self.type}] {self.title} → {self.user.phone_number}"

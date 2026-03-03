@@ -47,6 +47,7 @@ LOCAL_APPS = [
     "apps.sos",
     "apps.initiatives",
     "apps.arbitration",
+    "apps.gamification",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -62,6 +63,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "common.middleware.RequestLoggingMiddleware",
 ]
 
 # --- URLs ---
@@ -142,6 +144,7 @@ REST_FRAMEWORK = {
         "anon": "100/hour",
         "otp": "5/hour",
     },
+    "EXCEPTION_HANDLER": "common.exceptions.custom_exception_handler",
 }
 
 # --- JWT ---
@@ -208,16 +211,45 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.arbitration.tasks.auto_close_decided_cases",
         "schedule": 60 * 60 * 24,  # 24 hours
     },
+    # Verification: re-sync GeD data every 6 hours
+    "sync-ged-data": {
+        "task": "apps.verification.tasks.sync_ged_data",
+        "schedule": 60 * 60 * 6,  # 6 hours
+    },
+    # Verification: cleanup expired OTPs daily
+    "cleanup-expired-otps": {
+        "task": "apps.verification.tasks.cleanup_expired_otps",
+        "schedule": 60 * 60 * 24,  # 24 hours
+    },
 }
 
 # --- drf-spectacular ---
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Girchi Digital Policy API",
-    "DESCRIPTION": "Backend API for the Girchi decentralized governance platform.",
+    "DESCRIPTION": (
+        "Backend API for the Girchi decentralized governance platform.\n\n"
+        "**User flow:** Register → Verify phone (SMS OTP) → Verify GeD identity → Onboard → "
+        "Join a group → Participate in elections, initiatives, and SOS reports.\n\n"
+        "**Roles:** `unverified` → `geder` (GeD verified) or `supporter` (endorsed by a GeDer).\n\n"
+        "**Auth:** All endpoints except registration and OTP use JWT Bearer tokens."
+    ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": "/api/v1/",
+    "TAGS": [
+        {"name": "Auth", "description": "User registration, JWT tokens, profile, onboarding."},
+        {"name": "Verification", "description": "SMS OTP, GeD identity verification, device fingerprinting."},
+        {"name": "Territories", "description": "Georgian electoral geography: regions, districts, precincts."},
+        {"name": "Communities", "description": "Groups of ten, endorsement system, nearby GeDers."},
+        {"name": "Governance", "description": "Leadership positions, elections, voting, hierarchy tree."},
+        {"name": "SOS", "description": "Crisis reporting, local verification, escalation chain."},
+        {"name": "Initiatives", "description": "Community petitions, signatures, threshold detection, leader responses."},
+        {"name": "Arbitration", "description": "Dispute resolution, case lifecycle, appeal chain."},
+        {"name": "Gamification", "description": "Territory progress, tier capabilities, unlocked features."},
+        {"name": "Notifications", "description": "In-app notification inbox."},
+    ],
+    "COMPONENT_SPLIT_REQUEST": True,
 }
 
 # --- SMS (smsoffice.ge) ---

@@ -6,6 +6,8 @@ from rest_framework import serializers
 from apps.territories.models import Precinct
 from apps.territories.serializers import PrecinctSerializer
 
+from .models import Notification
+
 User = get_user_model()
 
 
@@ -79,6 +81,13 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             "is_diaspora",
             "precinct_id",
         ]
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["id", "type", "title", "body", "is_read", "created_at"]
+        read_only_fields = ["id", "type", "title", "body", "created_at"]
 
 
 class OnboardingSerializer(serializers.Serializer):

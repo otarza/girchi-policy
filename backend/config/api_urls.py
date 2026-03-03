@@ -9,4 +9,5 @@ urlpatterns = [
     path("sos/", include("apps.sos.urls")),
     path("initiatives/", include("apps.initiatives.urls")),
     path("arbitration/", include("apps.arbitration.urls")),
+    path("gamification/", include("apps.gamification.urls")),
 ]

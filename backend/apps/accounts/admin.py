@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import User
+from .models import Notification, User
 
 
 @admin.register(User)
@@ -70,3 +70,13 @@ class UserAdmin(BaseUserAdmin):
 
     is_council_member.boolean = True
     is_council_member.short_description = "Council Member?"
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ["user", "type", "title", "is_read", "created_at"]
+    list_filter = ["type", "is_read"]
+    search_fields = ["user__phone_number", "title", "body"]
+    readonly_fields = ["created_at"]
+    raw_id_fields = ["user"]
+    ordering = ["-created_at"]

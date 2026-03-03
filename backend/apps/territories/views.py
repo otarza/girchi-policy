@@ -1,5 +1,7 @@
 import math
 
+from django.core.cache import cache
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import filters, generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -14,6 +16,8 @@ from .serializers import (
     PrecinctWithDistanceSerializer,
     RegionSerializer,
 )
+
+CACHE_TTL_TERRITORY = 60 * 60  # 1 hour
 
 
 def haversine_distance(lat1, lon1, lat2, lon2):
@@ -39,11 +43,13 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return R * c
 
 
+@extend_schema(tags=["Territories"], summary="List all regions")
 class RegionListView(generics.ListAPIView):
     """
     List all regions in Georgia.
 
     Supports search by name (Georgian/English) and code.
+    Cached for 1 hour (regions are static data).
     """
 
     queryset = Region.objects.all()
@@ -53,12 +59,26 @@ class RegionListView(generics.ListAPIView):
     search_fields = ["name", "name_ka", "code"]
     ordering_fields = ["name", "code"]
 
+    def list(self, request, *args, **kwargs):
+        # Only cache unfiltered requests
+        if not request.query_params:
+            cache_key = "territory:regions"
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+            response = super().list(request, *args, **kwargs)
+            cache.set(cache_key, response.data, CACHE_TTL_TERRITORY)
+            return response
+        return super().list(request, *args, **kwargs)
 
+
+@extend_schema(tags=["Territories"], summary="List districts in a region")
 class RegionDistrictsView(generics.ListAPIView):
     """
     List all districts for a specific region.
 
     Supports search by name (Georgian/English) and CEC code.
+    Cached for 1 hour per region.
     """
 
     serializer_class = DistrictSerializer
@@ -71,12 +91,25 @@ class RegionDistrictsView(generics.ListAPIView):
         region_id = self.kwargs["pk"]
         return District.objects.filter(region_id=region_id).select_related("region")
 
+    def list(self, request, *args, **kwargs):
+        if not request.query_params:
+            cache_key = f"territory:districts:{self.kwargs['pk']}"
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+            response = super().list(request, *args, **kwargs)
+            cache.set(cache_key, response.data, CACHE_TTL_TERRITORY)
+            return response
+        return super().list(request, *args, **kwargs)
 
+
+@extend_schema(tags=["Territories"], summary="List precincts in a district")
 class DistrictPrecinctsView(generics.ListAPIView):
     """
     List all precincts for a specific district.
 
     Supports search by name (Georgian/English) and CEC code.
+    Cached for 1 hour per district.
     """
 
     serializer_class = PrecinctSerializer
@@ -91,7 +124,19 @@ class DistrictPrecinctsView(generics.ListAPIView):
             "district__region"
         )
 
+    def list(self, request, *args, **kwargs):
+        if not request.query_params:
+            cache_key = f"territory:precincts:{self.kwargs['pk']}"
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+            response = super().list(request, *args, **kwargs)
+            cache.set(cache_key, response.data, CACHE_TTL_TERRITORY)
+            return response
+        return super().list(request, *args, **kwargs)
 
+
+@extend_schema(tags=["Territories"], summary="Get precinct detail")
 class PrecinctDetailView(generics.RetrieveAPIView):
     """
     Retrieve a single precinct by ID.
@@ -104,6 +149,15 @@ class PrecinctDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
 
+@extend_schema(
+    tags=["Territories"],
+    summary="Find nearby precincts by GPS coordinates",
+    parameters=[
+        OpenApiParameter("lat", float, required=True, description="Latitude (-90 to 90)"),
+        OpenApiParameter("lng", float, required=True, description="Longitude (-180 to 180)"),
+        OpenApiParameter("radius", float, description="Search radius in km (1-50, default 10)"),
+    ],
+)
 class NearbyPrecinctsView(APIView):
     """
     Find precincts near given coordinates.

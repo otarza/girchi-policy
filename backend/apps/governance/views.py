@@ -1,10 +1,15 @@
+from django.core.cache import cache
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+CACHE_TTL_HIERARCHY = 60 * 10       # 10 minutes
+CACHE_TTL_ELECTION_RESULTS = None   # indefinite for completed elections
 
 from common.permissions import IsActiveMember, IsNotDiaspora, IsOnboarded, IsVerifiedMember
 
@@ -19,6 +24,15 @@ from .serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Governance"], summary="List elections", parameters=[
+        OpenApiParameter("status", str, description="Filter by status (nomination/voting/completed/cancelled)"),
+        OpenApiParameter("election_type", str, description="Filter by type (atistavi/hierarchy/parliamentary)"),
+        OpenApiParameter("position_id", int, description="Filter by position ID"),
+    ]),
+    retrieve=extend_schema(tags=["Governance"], summary="Get election detail"),
+    create=extend_schema(tags=["Governance"], summary="Create an election"),
+)
 class ElectionViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Election CRUD operations and election lifecycle actions.
@@ -125,6 +139,7 @@ class ElectionViewSet(viewsets.ModelViewSet):
 
         return Response(data)
 
+    @extend_schema(tags=["Governance"], summary="Register as candidate")
     @action(detail=True, methods=["post"])
     def nominate(self, request, pk=None):
         """
@@ -208,6 +223,7 @@ class ElectionViewSet(viewsets.ModelViewSet):
         serializer = CandidacySerializer(candidacy, context=self.get_serializer_context())
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(tags=["Governance"], summary="Cast a vote")
     @action(detail=True, methods=["post"])
     def vote(self, request, pk=None):
         """
@@ -301,6 +317,7 @@ class ElectionViewSet(viewsets.ModelViewSet):
         serializer = VoteSerializer(vote, context=self.get_serializer_context())
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(tags=["Governance"], summary="Get election results")
     @action(detail=True, methods=["get"])
     def results(self, request, pk=None):
         """
@@ -312,8 +329,17 @@ class ElectionViewSet(viewsets.ModelViewSet):
         - results: array of all candidacies with vote counts (sorted by votes descending)
         - total_votes: total number of votes cast
         - total_eligible_voters: count of eligible voters
+
+        Completed elections are cached indefinitely (results never change after completion).
         """
         election = self.get_object()
+
+        # Serve from cache for completed elections
+        if election.status == ElectionStatus.COMPLETED:
+            cache_key = f"election:results:{election.id}"
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
 
         # Annotate candidacies with vote counts and order by vote count
         candidacies = (
@@ -342,8 +368,14 @@ class ElectionViewSet(viewsets.ModelViewSet):
         }
 
         serializer = ElectionResultsSerializer(results_data, context=self.get_serializer_context())
+
+        # Cache completed election results indefinitely
+        if election.status == ElectionStatus.COMPLETED:
+            cache.set(f"election:results:{election.id}", serializer.data, CACHE_TTL_ELECTION_RESULTS)
+
         return Response(serializer.data)
 
+    @extend_schema(tags=["Governance"], summary="Transition election to voting phase")
     @action(detail=True, methods=["post"])
     def start_voting(self, request, pk=None):
         """
@@ -368,6 +400,7 @@ class ElectionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(election)
         return Response(serializer.data)
 
+    @extend_schema(tags=["Governance"], summary="Complete election and tally votes")
     @action(detail=True, methods=["post"])
     def complete_election(self, request, pk=None):
         """
@@ -399,6 +432,16 @@ class ElectionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Governance"], summary="List leadership positions", parameters=[
+        OpenApiParameter("tier", int, description="Filter by tier (10/50/100/1000)"),
+        OpenApiParameter("precinct_id", int, description="Filter by precinct"),
+        OpenApiParameter("district_id", int, description="Filter by district"),
+        OpenApiParameter("is_active", bool, description="Filter active/inactive"),
+        OpenApiParameter("is_vacant", bool, description="Filter vacant positions"),
+    ]),
+    retrieve=extend_schema(tags=["Governance"], summary="Get position detail"),
+)
 class LeaderPositionViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for LeaderPosition list and detail operations.
@@ -476,6 +519,15 @@ class LeaderPositionViewSet(viewsets.ReadOnlyModelViewSet):
         return LeaderPositionDetailSerializer
 
 
+@extend_schema(
+    tags=["Governance"],
+    summary="Get governance hierarchy tree",
+    parameters=[
+        OpenApiParameter("district_id", int, description="Filter to district (shows 100→50→10)"),
+        OpenApiParameter("precinct_id", int, description="Filter to precinct (shows 50→10)"),
+        OpenApiParameter("max_depth", int, description="Max tree depth 1-4 (default 4)"),
+    ],
+)
 class HierarchyTreeView(APIView):
     """
     View for governance hierarchy tree.
@@ -498,6 +550,12 @@ class HierarchyTreeView(APIView):
 
         district_id = request.query_params.get("district_id")
         precinct_id = request.query_params.get("precinct_id")
+
+        # Try cache first
+        cache_key = f"hierarchy:{district_id or 'all'}:{precinct_id or 'all'}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
 
         # Determine starting tier based on filters
         if precinct_id:
@@ -545,15 +603,16 @@ class HierarchyTreeView(APIView):
 
         serializer = HierarchyNodeSerializer(queryset, many=True, context=context)
 
-        return Response(
-            {
-                "start_tier": start_tier,
-                "hierarchy": serializer.data,
-                "filters": {
-                    "district_id": district_id,
-                    "precinct_id": precinct_id,
-                    "max_depth": max_depth,
-                },
-                "total_positions": queryset.count(),
-            }
-        )
+        response_data = {
+            "start_tier": start_tier,
+            "hierarchy": serializer.data,
+            "filters": {
+                "district_id": district_id,
+                "precinct_id": precinct_id,
+                "max_depth": max_depth,
+            },
+            "total_positions": queryset.count(),
+        }
+
+        cache.set(cache_key, response_data, CACHE_TTL_HIERARCHY)
+        return Response(response_data)

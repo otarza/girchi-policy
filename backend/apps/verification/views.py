@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -18,6 +19,7 @@ from .services import DeviceFingerprintService, GeDService, SMSService
 User = get_user_model()
 
 
+@extend_schema(tags=["Verification"], summary="Send SMS OTP to phone number")
 class SendOTPView(APIView):
     """Send OTP to a phone number."""
 
@@ -37,6 +39,7 @@ class SendOTPView(APIView):
         )
 
 
+@extend_schema(tags=["Verification"], summary="Verify SMS OTP code")
 class VerifyOTPView(APIView):
     """Verify an OTP code."""
 
@@ -64,6 +67,7 @@ class VerifyOTPView(APIView):
         )
 
 
+@extend_schema(tags=["Verification"], summary="Verify GeD identity via girchi.com JWT")
 class GeDVerifyView(APIView):
     """Initiate GeD verification via girchi.com API."""
 
@@ -90,6 +94,7 @@ class GeDVerifyView(APIView):
         )
 
 
+@extend_schema(tags=["Verification"], summary="Get GeD verification status")
 class GeDStatusView(APIView):
     """Check current GeD verification status."""
 
@@ -110,6 +115,7 @@ class GeDStatusView(APIView):
         )
 
 
+@extend_schema(tags=["Verification"], summary="Submit device fingerprint")
 class DeviceFingerprintView(APIView):
     """Submit device fingerprint for anti-fake detection."""
 

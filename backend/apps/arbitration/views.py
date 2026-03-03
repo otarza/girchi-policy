@@ -1,5 +1,6 @@
 from django.db.models import Q
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -15,6 +16,15 @@ from .serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Arbitration"], summary="List arbitration cases (own + arbitrating)", parameters=[
+        OpenApiParameter("status", str, description="Filter by status"),
+        OpenApiParameter("case_type", str, description="Filter by case type"),
+        OpenApiParameter("tier", int, description="Filter by tier"),
+    ]),
+    retrieve=extend_schema(tags=["Arbitration"], summary="Get case detail"),
+    create=extend_schema(tags=["Arbitration"], summary="File a new arbitration case"),
+)
 class ArbitrationCaseViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Arbitration Case CRUD and lifecycle actions.
@@ -76,6 +86,7 @@ class ArbitrationCaseViewSet(viewsets.ModelViewSet):
         tier = ArbitrationCase.get_initial_tier(case_type)
         serializer.save(complainant=self.request.user, tier=tier)
 
+    @extend_schema(tags=["Arbitration"], summary="Claim a case as arbitrator")
     @action(detail=True, methods=["post"])
     def claim(self, request, pk=None):
         """
@@ -119,6 +130,7 @@ class ArbitrationCaseViewSet(viewsets.ModelViewSet):
         )
         return Response(serializer.data)
 
+    @extend_schema(tags=["Arbitration"], summary="Render arbitration decision")
     @action(detail=True, methods=["post"])
     def decide(self, request, pk=None):
         """
@@ -181,6 +193,7 @@ class ArbitrationCaseViewSet(viewsets.ModelViewSet):
         )
         return Response(serializer.data)
 
+    @extend_schema(tags=["Arbitration"], summary="Appeal decision to next tier")
     @action(detail=True, methods=["post"])
     def appeal(self, request, pk=None):
         """

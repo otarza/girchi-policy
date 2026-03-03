@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models import Count, Q
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import viewsets, status, serializers, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -18,6 +19,11 @@ from .serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Communities"], summary="List groups of ten", parameters=[OpenApiParameter("precinct_id", int, description="Filter by precinct")]),
+    retrieve=extend_schema(tags=["Communities"], summary="Get group detail"),
+    create=extend_schema(tags=["Communities"], summary="Create a group of ten (GeDers only)"),
+)
 class GroupOfTenViewSet(viewsets.ModelViewSet):
     """
     ViewSet for GroupOfTen CRUD operations.
@@ -87,6 +93,7 @@ class GroupOfTenViewSet(viewsets.ModelViewSet):
 
         serializer.save()
 
+    @extend_schema(tags=["Communities"], summary="Join a group")
     @action(detail=True, methods=["post"])
     def join(self, request, pk=None):
         """
@@ -134,6 +141,7 @@ class GroupOfTenViewSet(viewsets.ModelViewSet):
         serializer = MembershipSerializer(membership)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(tags=["Communities"], summary="Leave a group")
     @action(detail=True, methods=["post"])
     def leave(self, request, pk=None):
         """
@@ -162,6 +170,11 @@ class GroupOfTenViewSet(viewsets.ModelViewSet):
         return Response({"detail": "You have left the group."}, status=status.HTTP_200_OK)
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Communities"], summary="List endorsements (given and received)"),
+    create=extend_schema(tags=["Communities"], summary="Endorse a supporter (GeDers only)"),
+    destroy=extend_schema(tags=["Communities"], summary="Revoke an endorsement"),
+)
 class EndorsementViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Endorsement operations.
@@ -310,6 +323,7 @@ class EndorsementViewSet(viewsets.ModelViewSet):
             {"detail": "Endorsement revoked successfully."}, status=status.HTTP_200_OK
         )
 
+    @extend_schema(tags=["Communities"], summary="Check my endorsement quota")
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated, IsGeDer])
     def quota(self, request):
         """
@@ -327,6 +341,11 @@ class EndorsementViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@extend_schema(
+    tags=["Communities"],
+    summary="List GeDers with available endorsement slots in a precinct",
+    parameters=[OpenApiParameter("precinct_id", int, required=True, description="Precinct ID")],
+)
 class NearbyGeDersView(generics.ListAPIView):
     """
     List GeDers in a specific precinct who have available endorsement slots.

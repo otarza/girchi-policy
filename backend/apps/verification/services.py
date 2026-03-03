@@ -132,6 +132,27 @@ class GeDService:
             logger.exception("Failed to verify GeD via girchi.com API")
             return False, {}
 
+    def verify_user_by_id(self, girchi_user_id) -> tuple[bool, dict]:
+        """
+        Fetch GeD data for a known girchi user ID (used in periodic sync, no JWT needed).
+        Falls back to checking the public users endpoint.
+        """
+        if not girchi_user_id:
+            return False, {}
+        try:
+            response = requests.get(
+                f"{self.base_url}/api/users/{girchi_user_id}",
+                timeout=10,
+            )
+            if response.status_code == 404:
+                return False, {}
+            response.raise_for_status()
+            data = response.json()
+            return bool(data), data
+        except requests.RequestException:
+            logger.exception("Failed to sync GeD data for user_id=%s", girchi_user_id)
+            return False, {}
+
     def save_verification(self, user, girchi_jwt: str) -> GeDVerification | None:
         """Verify and persist GeD data for a user."""
         is_verified, data = self.verify_user(girchi_jwt)

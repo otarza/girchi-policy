@@ -1,5 +1,6 @@
 from django.db.models import Count
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -15,6 +16,15 @@ from .serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Initiatives"], summary="List initiatives/petitions", parameters=[
+        OpenApiParameter("status", str, description="Filter by status (open/threshold_met/responded/closed)"),
+        OpenApiParameter("precinct_id", int, description="Filter by precinct"),
+        OpenApiParameter("district_id", int, description="Filter by district"),
+    ]),
+    retrieve=extend_schema(tags=["Initiatives"], summary="Get initiative detail"),
+    create=extend_schema(tags=["Initiatives"], summary="Create a new initiative/petition"),
+)
 class InitiativeViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Initiative CRUD and signature actions.
@@ -65,6 +75,7 @@ class InitiativeViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
 
+    @extend_schema(tags=["Initiatives"], summary="Sign an initiative")
     @action(detail=True, methods=["post"])
     def sign(self, request, pk=None):
         """
@@ -128,6 +139,7 @@ class InitiativeViewSet(viewsets.ModelViewSet):
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(tags=["Initiatives"], summary="Official leader response to initiative (50+ leader)")
     @action(detail=True, methods=["post"])
     def respond(self, request, pk=None):
         """

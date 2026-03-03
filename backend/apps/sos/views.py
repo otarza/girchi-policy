@@ -1,5 +1,6 @@
 from django.db.models import Q
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -15,6 +16,14 @@ from .serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["SOS"], summary="List SOS reports (own + assigned)", parameters=[
+        OpenApiParameter("status", str, description="Filter by status"),
+        OpenApiParameter("escalation_level", int, description="Filter by escalation level"),
+    ]),
+    retrieve=extend_schema(tags=["SOS"], summary="Get SOS report detail"),
+    create=extend_schema(tags=["SOS"], summary="File a new SOS crisis report"),
+)
 class SOSReportViewSet(viewsets.ModelViewSet):
     """
     ViewSet for SOS Report CRUD and lifecycle actions.
@@ -77,6 +86,7 @@ class SOSReportViewSet(viewsets.ModelViewSet):
         report = serializer.save(reporter=self.request.user)
         assign_sos_to_atistavi.delay(report.id)
 
+    @extend_schema(tags=["SOS"], summary="Verify SOS report (Atistavi only)")
     @action(detail=True, methods=["post"])
     def verify(self, request, pk=None):
         """
@@ -113,6 +123,7 @@ class SOSReportViewSet(viewsets.ModelViewSet):
         serializer = SOSReportDetailSerializer(report, context=self.get_serializer_context())
         return Response(serializer.data)
 
+    @extend_schema(tags=["SOS"], summary="Reject SOS report as false/spam")
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
         """
@@ -140,6 +151,7 @@ class SOSReportViewSet(viewsets.ModelViewSet):
         serializer = SOSReportDetailSerializer(report, context=self.get_serializer_context())
         return Response(serializer.data)
 
+    @extend_schema(tags=["SOS"], summary="Escalate SOS report to next governance tier")
     @action(detail=True, methods=["post"])
     def escalate(self, request, pk=None):
         """
@@ -191,6 +203,7 @@ class SOSReportViewSet(viewsets.ModelViewSet):
         serializer = SOSReportDetailSerializer(report, context=self.get_serializer_context())
         return Response(serializer.data)
 
+    @extend_schema(tags=["SOS"], summary="Mark SOS report as resolved")
     @action(detail=True, methods=["post"])
     def resolve(self, request, pk=None):
         """
